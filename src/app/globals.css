@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --background: 0 0% 97%;
+    --foreground: 60 1% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 60 1% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 60 1% 10%;
+    --primary: 57 100% 47%;
+    --primary-foreground: 60 1% 7%;
+    --secondary: 60 1% 17%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 93%;
+    --muted-foreground: 0 0% 35%;
+    --accent: 57 100% 47%;
+    --accent-foreground: 60 1% 7%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 84%;
+    --input: 0 0% 84%;
+    --ring: 57 100% 42%;
+    --radius: 0.9rem;
+    --chart-1: 57 100% 47%;
+    --chart-2: 84 73% 42%;
+    --chart-3: 198 75% 48%;
+    --chart-4: 28 90% 55%;
+    --chart-5: 0 72% 51%;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --background: 60 2% 5%;
+    --foreground: 0 0% 96%;
+    --card: 60 1% 10%;
+    --card-foreground: 0 0% 96%;
+    --popover: 60 1% 10%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 57 100% 47%;
+    --primary-foreground: 60 1% 7%;
+    --secondary: 60 1% 17%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 60 1% 16%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 57 100% 47%;
+    --accent-foreground: 60 1% 7%;
+    --destructive: 0 62% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 60 1% 22%;
+    --input: 60 1% 22%;
+    --ring: 57 100% 47%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image: radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 26rem);
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  .racing-grid {
+    background-image:
+      linear-gradient(rgba(240, 227, 0, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(240, 227, 0, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .racing-stripe {
+    background-image: repeating-linear-gradient(
+      -58deg,
+      transparent 0,
+      transparent 16px,
+      rgba(240, 227, 0, 0.08) 16px,
+      rgba(240, 227, 0, 0.08) 18px
+    );
+  }
+
+  .metric-enter {
+    animation: fade-up 280ms ease-out both;
+  }
+
+  .page-enter {
+    animation: fade-up 240ms ease-out both;
+  }
+
+  .data-list > * {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 88px;
+  }
+
+  .mammoth-race-track {
+    position: relative;
+    height: 8.5rem;
+    overflow: hidden;
+    border-bottom: 0.4rem solid hsl(var(--primary));
+    background-image:
+      linear-gradient(90deg, hsl(var(--primary) / 0.08), transparent 45%),
+      repeating-linear-gradient(90deg, transparent 0, transparent 1.5rem, hsl(var(--primary) / 0.14) 1.5rem, hsl(var(--primary) / 0.14) 1.65rem);
+  }
+
+  .mammoth-race-finish {
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.35rem;
+    display: grid;
+    place-items: center;
+    width: 3.2rem;
+    height: 4.8rem;
+    color: hsl(var(--primary));
+    background: repeating-conic-gradient(#fff 0 25%, hsl(var(--foreground)) 0 50%) 50% / 0.75rem 0.75rem;
+    border: 0.25rem solid hsl(var(--primary));
+    animation: finish-flag 260ms 720ms ease-out both;
+  }
+
+  .mammoth-race-runner {
+    position: absolute;
+    bottom: -0.25rem;
+    left: -1.5rem;
+    width: 10rem;
+    animation: mammoth-arrives 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: transform;
+  }
+}
+
+@keyframes mammoth-arrives {
+  0% { transform: translateX(-8rem) rotate(-4deg); }
+  72% { transform: translateX(calc(100vw - 14.5rem)) rotate(2deg); }
+  100% { transform: translateX(calc(100vw - 14.5rem)) rotate(0); }
+}
+
+@keyframes finish-flag {
+  from { opacity: 0; transform: scale(0.65); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (min-width: 640px) {
+  @keyframes mammoth-arrives {
+    0% { transform: translateX(-8rem) rotate(-4deg); }
+    72% { transform: translateX(16rem) rotate(2deg); }
+    100% { transform: translateX(16rem) rotate(0); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
