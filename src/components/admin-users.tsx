@@ -4,7 +4,6 @@ import { Crown, LoaderCircle, Plus, ShieldCheck, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
-import { useInventoryData } from "@/components/providers/inventory-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,8 +48,13 @@ const roleLabels: Record<UserRole, string> = {
   blocked: "Sin acceso",
 };
 
-export function AdminUsers({ initialUsers }: { initialUsers: UserProfile[] }) {
-  const { isDemo } = useInventoryData();
+export function AdminUsers({
+  initialUsers,
+  isDemo,
+}: {
+  initialUsers: UserProfile[];
+  isDemo: boolean;
+}) {
   const [users, setUsers] = useState(initialUsers);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState("");

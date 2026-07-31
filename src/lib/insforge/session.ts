@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { demoProfile } from "@/lib/demo-data";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
@@ -24,7 +25,7 @@ const mapProfile = (profile: DbProfile): UserProfile => ({
   lastLoginAt: profile.last_login_at ?? undefined,
 });
 
-export async function getAppProfile(): Promise<UserProfile> {
+export const getAppProfile = cache(async (): Promise<UserProfile> => {
   if (!isInsForgeConfigured()) return demoProfile;
 
   const insforge = await createInsForgeServerClient();
@@ -51,4 +52,4 @@ export async function getAppProfile(): Promise<UserProfile> {
   }
 
   return mapProfile(profile);
-}
+});

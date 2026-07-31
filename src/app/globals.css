@@ -45,7 +45,7 @@
     --secondary: 60 1% 17%;
     --secondary-foreground: 0 0% 96%;
     --muted: 60 1% 16%;
-    --muted-foreground: 0 0% 65%;
+    --muted-foreground: 0 0% 69%;
     --accent: 57 100% 47%;
     --accent-foreground: 60 1% 7%;
     --destructive: 0 62% 42%;
@@ -64,9 +64,27 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply min-h-dvh bg-background text-foreground antialiased;
     background-image: radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 26rem);
     transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  ::selection {
+    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary) / 0.85);
+  }
+
+  :where(a, button, input, select, textarea, [role="button"]) {
+    touch-action: manipulation;
+  }
+
+  :where(button:not(:disabled), [role="button"]:not([aria-disabled="true"])) {
+    cursor: pointer;
+  }
+
+  * {
+    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-width: thin;
   }
 
   :focus-visible {
@@ -107,6 +125,7 @@
 
   .mammoth-race-track {
     position: relative;
+    container-type: inline-size;
     height: 8.5rem;
     overflow: hidden;
     border-bottom: 0.4rem solid hsl(var(--primary));
@@ -126,7 +145,8 @@
     color: hsl(var(--primary));
     background: repeating-conic-gradient(#fff 0 25%, hsl(var(--foreground)) 0 50%) 50% / 0.75rem 0.75rem;
     border: 0.25rem solid hsl(var(--primary));
-    animation: finish-flag 260ms 720ms ease-out both;
+    opacity: 0.45;
+    transform: scale(0.86);
   }
 
   .mammoth-race-runner {
@@ -134,28 +154,37 @@
     bottom: -0.25rem;
     left: -1.5rem;
     width: 10rem;
-    animation: mammoth-arrives 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform: translate3d(0, 0, 0);
     will-change: transform;
+  }
+
+  .mammoth-race-track[data-race-state="processing"] .mammoth-race-runner {
+    animation: mammoth-running 320ms ease-in-out infinite alternate;
+  }
+
+  .mammoth-race-track[data-race-state="success"] .mammoth-race-runner {
+    animation: mammoth-finishes 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .mammoth-race-track[data-race-state="success"] .mammoth-race-finish {
+    animation: finish-flag 260ms 600ms ease-out both;
   }
 }
 
-@keyframes mammoth-arrives {
-  0% { transform: translateX(-8rem) rotate(-4deg); }
-  72% { transform: translateX(calc(100vw - 14.5rem)) rotate(2deg); }
-  100% { transform: translateX(calc(100vw - 14.5rem)) rotate(0); }
+@keyframes mammoth-running {
+  from { transform: translate3d(0, 0.1rem, 0) rotate(-2deg); }
+  to { transform: translate3d(0.35rem, -0.22rem, 0) rotate(2deg); }
+}
+
+@keyframes mammoth-finishes {
+  0% { transform: translate3d(0, 0, 0) rotate(-2deg); }
+  82% { transform: translate3d(calc(100cqw - 11rem), -0.18rem, 0) rotate(2deg); }
+  100% { transform: translate3d(calc(100cqw - 11rem), 0, 0) rotate(0); }
 }
 
 @keyframes finish-flag {
-  from { opacity: 0; transform: scale(0.65); }
+  from { opacity: 0.45; transform: scale(0.86); }
   to { opacity: 1; transform: scale(1); }
-}
-
-@media (min-width: 640px) {
-  @keyframes mammoth-arrives {
-    0% { transform: translateX(-8rem) rotate(-4deg); }
-    72% { transform: translateX(16rem) rotate(2deg); }
-    100% { transform: translateX(16rem) rotate(0); }
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

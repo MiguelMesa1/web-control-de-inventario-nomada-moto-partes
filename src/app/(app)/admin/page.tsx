@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { AdminUsers } from "@/components/admin-users";
-import { InventoryProvider } from "@/components/providers/inventory-provider";
 import { demoProfile } from "@/lib/demo-data";
-import { loadInventoryData } from "@/lib/inventory/data";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
@@ -21,8 +19,6 @@ type DbProfile = {
 export default async function AdminPage() {
   const profile = await getAppProfile();
   if (profile.role !== "admin") redirect("/dashboard");
-
-  const inventoryData = await loadInventoryData();
 
   let users: UserProfile[] = [
     demoProfile,
@@ -62,9 +58,5 @@ export default async function AdminPage() {
     }));
   }
 
-  return (
-    <InventoryProvider value={inventoryData}>
-      <AdminUsers initialUsers={users} />
-    </InventoryProvider>
-  );
+  return <AdminUsers initialUsers={users} isDemo={!isInsForgeConfigured()} />;
 }

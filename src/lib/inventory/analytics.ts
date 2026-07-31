@@ -89,6 +89,27 @@ export function calculateProductMovements(
     .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 }
 
+export function summarizeNegativeMovementsByLine(
+  movements: ProductMovement[],
+) {
+  const grouped = new Map<string, { unitsOut: number; products: number }>();
+
+  for (const movement of movements) {
+    if (movement.change >= 0) continue;
+    const entry = grouped.get(movement.productLine) ?? {
+      unitsOut: 0,
+      products: 0,
+    };
+    entry.unitsOut += Math.abs(movement.change);
+    entry.products += 1;
+    grouped.set(movement.productLine, entry);
+  }
+
+  return [...grouped.entries()]
+    .map(([line, values]) => ({ line, ...values }))
+    .sort((a, b) => b.unitsOut - a.unitsOut);
+}
+
 export function buildLineTrend(
   history: InventoryHistoryPoint[],
   days: number,

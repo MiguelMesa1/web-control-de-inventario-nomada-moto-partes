@@ -4,7 +4,6 @@ import { Save, Settings2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
-import { useInventoryData } from "@/components/providers/inventory-provider";
 import { useProfile } from "@/components/providers/profile-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -18,10 +17,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function SettingsPanel() {
-  const { lowStockThreshold, isDemo } = useInventoryData();
+export function SettingsPanel({
+  initialLowStockThreshold,
+  isDemo,
+}: {
+  initialLowStockThreshold: number;
+  isDemo: boolean;
+}) {
   const profile = useProfile();
-  const [threshold, setThreshold] = useState(lowStockThreshold);
+  const [threshold, setThreshold] = useState(initialLowStockThreshold);
   const [saving, setSaving] = useState(false);
   const isAdmin = profile.role === "admin";
 

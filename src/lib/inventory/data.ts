@@ -241,3 +241,86 @@ export async function loadInventoryData(): Promise<InventoryData> {
     isDemo: false,
   };
 }
+
+export async function loadAnalyticsData(): Promise<
+  Pick<InventoryData, "current" | "history" | "isDemo">
+> {
+  if (!isInsForgeConfigured()) {
+    return {
+      current: demoInventoryData.current,
+      history: demoInventoryData.history,
+      isDemo: true,
+    };
+  }
+
+  const insforge = await createInsForgeServerClient();
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+  const [currentResult, historyResult] = await Promise.all([
+    loadAllPages<DbInventoryItem>((from, to) =>
+      insforge.database
+        .from("inventory_current")
+        .select(
+          "sku,product_name,product_line,warehouse,stock,reserved,available,snapshot_id,source_exported_at",
+          { count: "exact" },
+        )
+        .order("product_line")
+        .order("product_name")
+        .order("sku")
+        .order("warehouse")
+        .range(from, to),
+    ),
+    loadAllPages<DbHistoryPoint>((from, to) =>
+      insforge.database
+        .from("inventory_items")
+        .select(
+          "snapshot_id,sku,product_line,warehouse,available,recorded_at",
+          { count: "exact" },
+        )
+        .gte("recorded_at", ninetyDaysAgo.toISOString())
+        .order("recorded_at")
+        .order("snapshot_id")
+        .order("sku")
+        .order("warehouse")
+        .range(from, to),
+    ),
+  ]);
+
+  return {
+    current: currentResult.map(mapInventoryItem),
+    history: historyResult.map(
+      (point): InventoryHistoryPoint => ({
+        date: String(point.recorded_at),
+        snapshotId: String(point.snapshot_id),
+        productLine: String(point.product_line),
+        warehouse: String(point.warehouse),
+        sku: String(point.sku),
+        available: Number(point.available),
+      }),
+    ),
+    isDemo: false,
+  };
+}
+
+export async function loadInventorySettings() {
+  if (!isInsForgeConfigured()) {
+    return {
+      lowStockThreshold: demoInventoryData.lowStockThreshold,
+      isDemo: true,
+    };
+  }
+
+  const insforge = await createInsForgeServerClient();
+  const { data, error } = await insforge.database
+    .from("inventory_settings")
+    .select("low_stock_threshold")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+
+  return {
+    lowStockThreshold: Number(data?.low_stock_threshold ?? 5),
+    isDemo: false,
+  };
+}

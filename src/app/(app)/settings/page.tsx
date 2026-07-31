@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { SettingsPanel } from "@/components/settings-panel";
+import { loadInventorySettings } from "@/lib/inventory/data";
 import { getAppProfile } from "@/lib/insforge/session";
 
 export default async function SettingsPage() {
   const profile = await getAppProfile();
   if (profile.role !== "admin") redirect("/dashboard");
-  return <SettingsPanel />;
+
+  const settings = await loadInventorySettings();
+  return <SettingsPanel initialLowStockThreshold={settings.lowStockThreshold} isDemo={settings.isDemo} />;
 }

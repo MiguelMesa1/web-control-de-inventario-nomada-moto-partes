@@ -33,6 +33,12 @@ test.describe("portal demo", () => {
   });
 
   test("validates a CSV before publishing", async ({ page }) => {
+    const browserErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") browserErrors.push(message.text());
+    });
+    page.on("pageerror", (error) => browserErrors.push(error.message));
+
     await page.goto("/uploads");
     const input = page.getByLabel("Archivo de Effi");
     await expect(input).toBeEnabled();
@@ -46,9 +52,11 @@ test.describe("portal demo", () => {
     await expect(page.getByText("Validación correcta")).toBeVisible();
     await expect(page.getByRole("button", { name: "Publicar inventario" })).toBeEnabled();
     await page.getByRole("button", { name: "Publicar inventario" }).click();
+    await expect(page.getByRole("heading", { name: "¡Mamut en carrera!" })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Carga completada/ })).toBeVisible();
     await page.getByRole("button", { name: "Continuar" }).click();
     await expect(page.getByRole("heading", { name: /Carga completada/ })).toBeHidden();
+    expect(browserErrors, browserErrors.join("\n")).toEqual([]);
   });
 
   test("exposes the mobile menu only at compact widths", async ({ page }) => {

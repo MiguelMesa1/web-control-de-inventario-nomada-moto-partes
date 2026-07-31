@@ -12,7 +12,6 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
-import { useInventoryData } from "@/components/providers/inventory-provider";
 import { useProfile } from "@/components/providers/profile-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -45,9 +44,8 @@ type Preview = {
 
 const subscribeToHydration = () => () => undefined;
 
-export function InventoryUpload() {
+export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
   const router = useRouter();
-  const { isDemo } = useInventoryData();
   const profile = useProfile();
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -57,6 +55,9 @@ export function InventoryUpload() {
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [raceState, setRaceState] = useState<"processing" | "success">(
+    "processing",
+  );
   const [sourceDate, setSourceDate] = useState(() =>
     getBogotaCalendarDate(),
   );
@@ -120,8 +121,11 @@ export function InventoryUpload() {
     if (!preview || !allowed) return;
     setBusy(true);
     setProgress(55);
+    setRaceState("processing");
+    setShowCelebration(true);
     let reorderCount = 0;
     let emailWarning: string | undefined;
+    let reorderWarning: string | undefined;
     try {
       if (isDemo) {
         await new Promise((resolve) => setTimeout(resolve, 850));
@@ -140,23 +144,37 @@ export function InventoryUpload() {
           message?: string;
           reorderCount?: number;
           emailWarning?: string;
+          reorderWarning?: string;
         };
         if (!response.ok) throw new Error(payload.message ?? "Carga rechazada.");
         reorderCount = payload.reorderCount ?? 0;
         emailWarning = payload.emailWarning;
+        reorderWarning = payload.reorderWarning;
       }
       setProgress(100);
-      setShowCelebration(true);
+      setRaceState("success");
       toast.success("Carga lista", {
         description: isDemo
           ? "Simulación completada. Conecta InsForge para persistirla."
-          : "El inventario vigente quedó actualizado.",
+          : reorderWarning
+            ? "El inventario vigente quedó actualizado."
+            : reorderCount > 0
+              ? `El inventario quedó actualizado y detectamos ${reorderCount} ${reorderCount === 1 ? "producto" : "productos"} para recompra.`
+              : "El inventario vigente quedó actualizado sin alertas nuevas de recompra.",
       });
+      if (reorderWarning || emailWarning) {
+        toast.warning("Inventario publicado con un aviso", {
+          description: reorderWarning
+            ? "La carga quedó guardada, pero no pudimos calcular las alertas de recompra. Puedes revisarlas desde Punto de Reorden."
+            : "La carga quedó guardada y las alertas se calcularon, pero el correo de recompra no pudo enviarse.",
+        });
+      }
       setPreview(null);
       setSelectedFileName("");
       if (inputRef.current) inputRef.current.value = "";
       router.refresh();
     } catch (caught) {
+      setShowCelebration(false);
       setProgress(0);
       const message =
         caught instanceof Error
@@ -175,6 +193,7 @@ export function InventoryUpload() {
     <div className="flex flex-col gap-6">
       <InventoryUploadCelebration
         open={showCelebration}
+        state={raceState}
         onOpenChange={setShowCelebration}
       />
       <PageHeader

@@ -1,13 +1,6 @@
 import { InventoryUpload } from "@/components/inventory-upload";
-import { InventoryProvider } from "@/components/providers/inventory-provider";
-import { loadInventoryData } from "@/lib/inventory/data";
+import { isInsForgeConfigured } from "@/lib/insforge/config";
 
-export default async function UploadsPage() {
-  const data = await loadInventoryData();
-
-  return (
-    <InventoryProvider value={data}>
-      <InventoryUpload />
-    </InventoryProvider>
-  );
+export default function UploadsPage() {
+  return <InventoryUpload isDemo={!isInsForgeConfigured()} />;
 }

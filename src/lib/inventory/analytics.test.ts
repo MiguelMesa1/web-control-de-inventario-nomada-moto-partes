@@ -3,6 +3,7 @@ import {
   aggregateLineMetrics,
   calculateProductMovements,
   inventorySummary,
+  summarizeNegativeMovementsByLine,
 } from "@/lib/inventory/analytics";
 import type { InventoryItem } from "@/types/inventory";
 
@@ -61,6 +62,25 @@ describe("inventory analytics", () => {
       change: -3,
       changePercent: -30,
     });
+  });
+
+  it("summarizes only negative movements by product line", () => {
+    const movements = calculateProductMovements(
+      [
+        item("A", "Motor", "Principal", 7),
+        item("B", "Motor", "Principal", 3),
+        item("C", "Frenos", "Principal", 12),
+      ],
+      [
+        item("A", "Motor", "Principal", 10),
+        item("B", "Motor", "Principal", 8),
+        item("C", "Frenos", "Principal", 10),
+      ],
+    );
+
+    expect(summarizeNegativeMovementsByLine(movements)).toEqual([
+      { line: "Motor", unitsOut: 8, products: 2 },
+    ]);
   });
 
   it("summarizes exhausted and low stock independently", () => {
