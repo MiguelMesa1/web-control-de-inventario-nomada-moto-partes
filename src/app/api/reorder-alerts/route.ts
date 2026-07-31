@@ -24,7 +24,9 @@ export async function GET() {
       id: item.id,
       sku: item.sku,
       productName: item.productName,
+      productLine: item.productLine,
       available: item.available,
+      reorderPoint: item.reorderPoint,
       hasInventoryRecord: item.hasInventoryRecord,
     }));
 

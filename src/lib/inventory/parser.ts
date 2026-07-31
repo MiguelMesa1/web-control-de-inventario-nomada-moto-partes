@@ -21,6 +21,7 @@ const headerAliases = {
     "existencia fisica",
     "stock total empresa",
   ],
+  principalStock: ["stock bodega: principal (sucursal: principal)"],
   reserved: ["reservado", "cantidad reservada", "comprometido"],
   available: ["disponible", "cantidad disponible", "saldo disponible"],
 } as const;
@@ -56,6 +57,13 @@ function isEffiConsolidatedExport(rows: RawRow[]) {
   );
 }
 
+function hasPrincipalWarehouseStock(rows: RawRow[]) {
+  const headers = new Set(
+    Object.keys(rows[0] ?? {}).map((header) => normalizeHeader(header)),
+  );
+  return headerAliases.principalStock.some((header) => headers.has(header));
+}
+
 function numericValue(value: unknown, field: string, rowNumber: number) {
   if (value === undefined || value === null || value === "") return 0;
   const normalized =
@@ -82,6 +90,7 @@ export function normalizeInventoryRows(
   }
 
   const effiConsolidated = isEffiConsolidatedExport(rows);
+  const principalWarehouseStock = hasPrincipalWarehouseStock(rows);
   const inventoryRows = rows.filter((row) => {
     if (!Object.values(row).some((value) => String(value ?? "").trim())) {
       return false;
@@ -89,7 +98,12 @@ export function normalizeInventoryRows(
     if (!effiConsolidated) return true;
 
     const sku = String(findValue(row, headerAliases.sku) ?? "").trim();
-    const stock = findValue(row, headerAliases.stock);
+    const stock = findValue(
+      row,
+      principalWarehouseStock
+        ? headerAliases.principalStock
+        : headerAliases.stock,
+    );
     return Boolean(sku) && Number.isFinite(Number(stock));
   });
 
@@ -109,7 +123,7 @@ export function normalizeInventoryRows(
     ).trim();
     const warehouse = String(
       findValue(row, headerAliases.warehouse) ??
-        (effiConsolidated ? "Empresa" : ""),
+        (principalWarehouseStock ? "Principal" : effiConsolidated ? "Empresa" : ""),
     ).trim();
     const normalizedLine =
       productLine || (effiConsolidated ? "Sin marca" : "");
@@ -134,7 +148,12 @@ export function normalizeInventoryRows(
     seen.add(key);
 
     const stock = numericValue(
-      findValue(row, headerAliases.stock),
+      findValue(
+        row,
+        principalWarehouseStock
+          ? headerAliases.principalStock
+          : headerAliases.stock,
+      ),
       "existencia",
       rowNumber,
     );

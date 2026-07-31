@@ -47,4 +47,33 @@ describe("buildReorderAlertRows", () => {
     );
     expect(rows.map((row) => row.status)).toEqual(["exhausted", "missing"]);
   });
+
+  it("aplica puntos diferentes para XTZ y Boxer", () => {
+    const xtz = stock("XTZ-1", 10, "Principal");
+    xtz.productLine = "XTZ 150";
+    const boxer = stock("BOXER-1", 10, "Principal");
+    boxer.productLine = "Boxer";
+
+    const rows = buildReorderAlertRows(
+      [watch("XTZ-1"), watch("BOXER-1")],
+      [xtz, boxer],
+      [
+        { productLine: "xtz 150", reorderPoint: 8 },
+        { productLine: "BOXER", reorderPoint: 15 },
+      ],
+    );
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        sku: "XTZ-1",
+        reorderPoint: 8,
+        status: "healthy",
+      }),
+      expect.objectContaining({
+        sku: "BOXER-1",
+        reorderPoint: 15,
+        status: "reorder",
+      }),
+    ]);
+  });
 });

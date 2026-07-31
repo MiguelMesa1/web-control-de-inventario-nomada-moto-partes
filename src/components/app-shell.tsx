@@ -10,6 +10,7 @@ import {
   Gauge,
   History,
   Menu,
+  PackageOpen,
   Settings2,
   ShieldCheck,
   ShoppingCart,
@@ -47,6 +48,7 @@ import type { UserProfile } from "@/types/inventory";
 const mainNavigation = [
   { href: "/dashboard", label: "Inicio", icon: Gauge },
   { href: "/inventory", label: "Inventario", icon: Boxes },
+  { href: "/plastic-kits", label: "Kit Plástico", icon: PackageOpen },
   { href: "/reorder", label: "Punto de Reorden", icon: ShoppingCart },
   { href: "/orders", label: "Pedidos", icon: ClipboardList },
   { href: "/lines", label: "Líneas principales", icon: BarChart3 },

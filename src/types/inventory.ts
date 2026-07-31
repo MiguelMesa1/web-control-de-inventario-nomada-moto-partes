@@ -74,6 +74,25 @@ export interface ImportRun {
   errorMessage?: string;
 }
 
+export interface EmailDeliveryAttempt {
+  id: string;
+  snapshotId?: string;
+  filename: string;
+  senderEmail: string;
+  recipientEmail: string;
+  recipientName?: string;
+  subject: string;
+  status: "sent" | "failed";
+  alertCount: number;
+  suggestedUnits: number;
+  durationMs?: number;
+  providerMessageId?: string;
+  providerResponse?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt: string;
+}
+
 export interface ProductAttachment {
   id: string;
   sku: string;

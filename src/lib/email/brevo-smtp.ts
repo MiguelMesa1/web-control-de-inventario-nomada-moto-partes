@@ -6,6 +6,13 @@ type SendEmailOptions = {
   html: string;
 };
 
+export type SendEmailReceipt = {
+  accepted: string[];
+  rejected: string[];
+  messageId: string;
+  response: string;
+};
+
 function requireEnvironmentVariable(name: string) {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -44,7 +51,16 @@ export async function sendBrevoEmail({ to, subject, html }: SendEmailOptions) {
     html,
   });
 
-  if (!result.accepted.includes(to)) {
+  const accepted = result.accepted.map(String);
+  const rejected = result.rejected.map(String);
+  if (!accepted.some((address) => address.toLowerCase() === to.toLowerCase())) {
     throw new Error("Brevo no acepto el destinatario del correo de recompra.");
   }
+
+  return {
+    accepted,
+    rejected,
+    messageId: result.messageId,
+    response: result.response,
+  } satisfies SendEmailReceipt;
 }

@@ -307,20 +307,36 @@ export async function loadInventorySettings() {
   if (!isInsForgeConfigured()) {
     return {
       lowStockThreshold: demoInventoryData.lowStockThreshold,
+      reorderLineSettings: demoInventoryData.reorderLineSettings,
       isDemo: true,
     };
   }
 
   const insforge = await createInsForgeServerClient();
-  const { data, error } = await insforge.database
-    .from("inventory_settings")
-    .select("low_stock_threshold")
-    .eq("id", true)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  const [settingsResult, lineSettingsResult] = await Promise.all([
+    insforge.database
+      .from("inventory_settings")
+      .select("low_stock_threshold")
+      .eq("id", true)
+      .maybeSingle(),
+    insforge.database
+      .from("reorder_line_settings")
+      .select("product_line,reorder_point")
+      .order("product_line"),
+  ]);
+  const firstError = settingsResult.error ?? lineSettingsResult.error;
+  if (firstError) throw new Error(firstError.message);
 
   return {
-    lowStockThreshold: Number(data?.low_stock_threshold ?? 5),
+    lowStockThreshold: Number(
+      settingsResult.data?.low_stock_threshold ?? 5,
+    ),
+    reorderLineSettings: (lineSettingsResult.data ?? []).map(
+      (setting): ReorderLineSetting => ({
+        productLine: String(setting.product_line),
+        reorderPoint: Number(setting.reorder_point),
+      }),
+    ),
     isDemo: false,
   };
 }

@@ -26,7 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { InventoryUploadCelebration } from "@/components/inventory-upload-celebration";
+import { InventoryUploadProgress } from "@/components/inventory-upload-progress";
 import { parseInventoryFile } from "@/lib/inventory/parser";
 import {
   getBogotaCalendarDate,
@@ -54,8 +54,8 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [showCelebration, setShowCelebration] = useState(false);
-  const [raceState, setRaceState] = useState<"processing" | "success">(
+  const [showUploadProgress, setShowUploadProgress] = useState(false);
+  const [uploadState, setUploadState] = useState<"processing" | "success">(
     "processing",
   );
   const [sourceDate, setSourceDate] = useState(() =>
@@ -121,10 +121,12 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
     if (!preview || !allowed) return;
     setBusy(true);
     setProgress(55);
-    setRaceState("processing");
-    setShowCelebration(true);
+    setUploadState("processing");
+    setShowUploadProgress(true);
     let reorderCount = 0;
+    let emailRecipient: string | undefined;
     let emailWarning: string | undefined;
+    let emailLogWarning: string | undefined;
     let reorderWarning: string | undefined;
     try {
       if (isDemo) {
@@ -143,16 +145,20 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
         const payload = (await response.json()) as {
           message?: string;
           reorderCount?: number;
+          emailRecipient?: string;
           emailWarning?: string;
+          emailLogWarning?: string;
           reorderWarning?: string;
         };
         if (!response.ok) throw new Error(payload.message ?? "Carga rechazada.");
         reorderCount = payload.reorderCount ?? 0;
+        emailRecipient = payload.emailRecipient;
         emailWarning = payload.emailWarning;
+        emailLogWarning = payload.emailLogWarning;
         reorderWarning = payload.reorderWarning;
       }
       setProgress(100);
-      setRaceState("success");
+      setUploadState("success");
       toast.success("Carga lista", {
         description: isDemo
           ? "Simulación completada. Conecta InsForge para persistirla."
@@ -162,11 +168,21 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
               ? `El inventario quedó actualizado y detectamos ${reorderCount} ${reorderCount === 1 ? "producto" : "productos"} para recompra.`
               : "El inventario vigente quedó actualizado sin alertas nuevas de recompra.",
       });
-      if (reorderWarning || emailWarning) {
+      if (reorderCount > 0 && emailRecipient && !emailWarning) {
+        toast.success("Correo enviado correctamente", {
+          description: `La alerta de recompra se envió a ${emailRecipient}.`,
+        });
+      }
+      if (emailWarning) {
+        toast.error("Falló al enviar el correo", {
+          description:
+            "El inventario quedó guardado y las alertas se calcularon. Revisa el detalle en Ajustes.",
+        });
+      } else if (reorderWarning || emailLogWarning) {
         toast.warning("Inventario publicado con un aviso", {
           description: reorderWarning
             ? "La carga quedó guardada, pero no pudimos calcular las alertas de recompra. Puedes revisarlas desde Punto de Reorden."
-            : "La carga quedó guardada y las alertas se calcularon, pero el correo de recompra no pudo enviarse.",
+            : "El correo se procesó, pero no pudimos guardar su registro en Ajustes.",
         });
       }
       setPreview(null);
@@ -174,7 +190,7 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
       if (inputRef.current) inputRef.current.value = "";
       router.refresh();
     } catch (caught) {
-      setShowCelebration(false);
+      setShowUploadProgress(false);
       setProgress(0);
       const message =
         caught instanceof Error
@@ -191,10 +207,10 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <InventoryUploadCelebration
-        open={showCelebration}
-        state={raceState}
-        onOpenChange={setShowCelebration}
+      <InventoryUploadProgress
+        open={showUploadProgress}
+        state={uploadState}
+        onOpenChange={setShowUploadProgress}
       />
       <PageHeader
         eyebrow="Actualización manual controlada"
@@ -233,7 +249,7 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
                   id="inventory-file"
                   type="file"
                   accept=".csv,.xlsx,.xls"
-                  className="sr-only"
+                  className="sr-only !h-px !w-px !border-0 !p-0"
                   disabled={!hydrated || !allowed || busy}
                   onChange={(event) => inspectFile(event.target.files?.[0])}
                 />

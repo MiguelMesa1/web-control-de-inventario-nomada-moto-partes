@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { CheckCircle2, Flag, LoaderCircle } from "lucide-react";
+import { CheckCircle2, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,15 +11,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export function InventoryUploadCelebration({
-  open,
-  state,
-  onOpenChange,
-}: {
+type InventoryUploadProgressProps = {
   open: boolean;
   state: "processing" | "success";
   onOpenChange: (open: boolean) => void;
-}) {
+};
+
+export function InventoryUploadProgress({
+  open,
+  state,
+  onOpenChange,
+}: InventoryUploadProgressProps) {
   const processing = state === "processing";
 
   return (
@@ -42,52 +44,64 @@ export function InventoryUploadCelebration({
         <div className="relative bg-secondary px-5 pb-6 pt-5 text-secondary-foreground sm:px-7">
           <DialogHeader className="pr-8 text-left">
             <DialogTitle className="font-display text-2xl uppercase text-primary sm:text-3xl">
-              {processing ? "¡Mamut en carrera!" : "¡Carga completada!"}
+              {processing ? "Procesando tu documento" : "Documento procesado"}
             </DialogTitle>
             <DialogDescription className="text-secondary-foreground/75">
               {processing
-                ? "Estamos validando y publicando el inventario. El mamut llegará a la meta cuando todo esté listo."
-                : "El mamut llegó a la meta: tu inventario ya está actualizado."}
+                ? "Estamos validando la información y actualizando el inventario. Este proceso puede tardar unos segundos."
+                : "El inventario se actualizó correctamente y ya está disponible."}
             </DialogDescription>
           </DialogHeader>
 
           <div
-            className="mammoth-race-track mt-6"
-            data-race-state={state}
+            className="mammoth-processing-stage mt-6"
+            data-processing-state={state}
             aria-hidden="true"
           >
-            <div className="mammoth-race-finish">
-              <Flag className="size-8" strokeWidth={2.5} />
+            <div className="mammoth-processing-lines">
+              <span />
+              <span />
+              <span />
             </div>
-            <div className="mammoth-race-runner">
+            <div className="mammoth-processing-runner">
               <Image
-                src="/brand/nomada-elephant.png"
+                src="/brand/nomada-mammoth-running-2d.webp"
                 alt=""
-                width={160}
-                height={110}
-                sizes="160px"
-                className="h-auto w-32 sm:w-40"
+                width={1254}
+                height={1254}
+                sizes="(max-width: 640px) 144px, 176px"
+                className="h-auto w-full"
+                unoptimized
               />
+            </div>
+            <div className="mammoth-processing-success">
+              <CheckCircle2 className="size-7" strokeWidth={2.6} />
             </div>
           </div>
 
           <div
-            className="mt-5 flex items-center gap-2 text-sm font-semibold"
+            className="mt-5 flex min-h-6 items-center gap-2 text-sm font-semibold"
             role="status"
             aria-live="polite"
+            aria-busy={processing}
           >
             {processing ? (
-              <span className="animate-spin" aria-hidden="true">
-                <LoaderCircle className="size-5 text-primary" />
-              </span>
+              <LoaderCircle
+                className="size-5 shrink-0 animate-spin text-primary"
+                aria-hidden="true"
+              />
             ) : (
-              <CheckCircle2 className="size-5 text-primary" aria-hidden="true" />
+              <CheckCircle2
+                className="size-5 shrink-0 text-primary"
+                aria-hidden="true"
+              />
             )}
             {processing
-              ? "Leyendo, comprobando y publicando…"
-              : "Inventario publicado correctamente"}
+              ? "Leyendo y comprobando la información…"
+              : "Inventario actualizado correctamente"}
           </div>
         </div>
+
         {!processing && (
           <div className="flex justify-end bg-background px-5 py-4 sm:px-7">
             <Button type="button" onClick={() => onOpenChange(false)}>

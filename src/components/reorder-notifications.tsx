@@ -24,11 +24,20 @@ export function ReorderNotifications() {
       id: string;
       sku: string;
       productName: string;
+      productLine?: string;
       available: number;
+      reorderPoint: number;
       hasInventoryRecord: boolean;
     }>
   >([]);
   const [loaded, setLoaded] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setRefreshToken((value) => value + 1);
+    window.addEventListener("reorder-alerts:refresh", refresh);
+    return () => window.removeEventListener("reorder-alerts:refresh", refresh);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,7 +49,7 @@ export function ReorderNotifications() {
       .catch(() => undefined)
       .finally(() => setLoaded(true));
     return () => controller.abort();
-  }, []);
+  }, [refreshToken]);
 
   return (
     <DropdownMenu>
@@ -82,10 +91,11 @@ export function ReorderNotifications() {
                     {item.productName}
                   </span>
                   <span className="mt-1 block text-xs text-muted-foreground">
+                    {item.productLine ? `${item.productLine} · ` : ""}
                     {item.sku} ·{" "}
                     {item.hasInventoryRecord
-                      ? `quedan ${number.format(item.available)} unidades`
-                      : "sin registro en el inventario actual"}
+                      ? `quedan ${number.format(item.available)} · punto ${number.format(item.reorderPoint)}`
+                      : `sin registro · punto ${number.format(item.reorderPoint)}`}
                   </span>
                 </span>
               </Link>

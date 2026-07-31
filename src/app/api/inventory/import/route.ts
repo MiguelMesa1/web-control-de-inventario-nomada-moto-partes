@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sendBrevoEmail } from "@/lib/email/brevo-smtp";
+import { recordEmailDeliveryAttempt } from "@/lib/email/delivery-attempts";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { isValidInventorySourceDate } from "@/lib/inventory/source-date";
@@ -35,9 +36,38 @@ function errorMessage(caught: unknown, fallback: string) {
   );
 }
 
+function optionalErrorProperty(caught: unknown, property: string) {
+  if (
+    typeof caught !== "object" ||
+    caught === null ||
+    !(property in caught)
+  ) {
+    return undefined;
+  }
+  const value = (caught as Record<string, unknown>)[property];
+  return typeof value === "string" || typeof value === "number"
+    ? String(value)
+    : undefined;
+}
+
+async function recordEmailAttemptSafely(
+  attempt: Parameters<typeof recordEmailDeliveryAttempt>[0],
+) {
+  try {
+    await recordEmailDeliveryAttempt(attempt);
+    return undefined;
+  } catch (caught) {
+    return errorMessage(
+      caught,
+      "No pudimos guardar el intento de correo en el historial.",
+    );
+  }
+}
+
 async function processReorderNotifications(
   insforge: Awaited<ReturnType<typeof createInsForgeServerClient>>,
-  recipient: { email: string; displayName: string },
+  recipient: { id: string; email: string; displayName: string },
+  snapshotId: string,
   filename: string,
   items: InventoryItem[],
 ) {
@@ -95,25 +125,65 @@ async function processReorderNotifications(
   );
   if (!belowPoint.length) return { reorderCount: 0 };
 
+  const subject = `Stock bajo: ${belowPoint.length} referencias por revisar`;
+  const suggestedUnits = belowPoint.reduce(
+    (total, row) => total + row.deficit,
+    0,
+  );
+  const startedAt = Date.now();
+  const baseAttempt = {
+    attemptedBy: recipient.id,
+    snapshotId,
+    filename,
+    senderEmail: process.env.BREVO_FROM_EMAIL?.trim() || "No configurado",
+    recipientEmail: recipient.email,
+    recipientName: recipient.displayName,
+    subject,
+    alertCount: belowPoint.length,
+    suggestedUnits,
+  };
+
   try {
-    await sendBrevoEmail({
+    const receipt = await sendBrevoEmail({
       to: recipient.email,
-      subject: `Stock bajo: ${belowPoint.length} referencias por revisar`,
+      subject,
       html: reorderEmailHtml(belowPoint, {
         filename,
         uploaderName: recipient.displayName,
       }),
     });
+    const emailLogWarning = await recordEmailAttemptSafely({
+      ...baseAttempt,
+      status: "sent",
+      durationMs: Date.now() - startedAt,
+      providerMessageId: receipt.messageId,
+      providerResponse: receipt.response,
+    });
     return {
       reorderCount: belowPoint.length,
+      emailRecipient: recipient.email,
+      emailLogWarning,
     };
   } catch (caught) {
+    const emailLogWarning = await recordEmailAttemptSafely({
+      ...baseAttempt,
+      status: "failed",
+      durationMs: Date.now() - startedAt,
+      providerResponse: optionalErrorProperty(caught, "response"),
+      errorCode: optionalErrorProperty(caught, "code"),
+      errorMessage: errorMessage(
+        caught,
+        "No pudimos enviar el correo de recompra.",
+      ),
+    });
     return {
       reorderCount: belowPoint.length,
+      emailRecipient: recipient.email,
       emailWarning: errorMessage(
         caught,
         "No pudimos enviar el correo de recompra.",
       ),
+      emailLogWarning,
     };
   }
 }
@@ -166,7 +236,12 @@ export async function POST(request: Request) {
 
     const reorderResult = await processReorderNotifications(
       insforge,
-      { email: profile.email, displayName: profile.displayName },
+      {
+        id: profile.id,
+        email: profile.email,
+        displayName: profile.displayName,
+      },
+      String(data),
       body.filename,
       body.items,
     ).catch((caught) => ({
