@@ -4,15 +4,26 @@ import type {
   ReorderLineSetting,
   ReorderWatchItem,
 } from "@/types/inventory";
+import { normalizeInventoryText } from "@/lib/inventory/priority-lines";
+
+export function getReorderPointForLine(
+  productLine: string,
+  lineSettings: ReorderLineSetting[],
+  fallback: number,
+) {
+  const normalizedLine = normalizeInventoryText(productLine);
+  return (
+    lineSettings.find(
+      (setting) => normalizeInventoryText(setting.productLine) === normalizedLine,
+    )?.reorderPoint ?? fallback
+  );
+}
 
 export function buildReorderAlertRows(
   watchlist: ReorderWatchItem[],
   inventory: InventoryItem[],
   lineSettings: ReorderLineSetting[] = [],
 ): ReorderAlertRow[] {
-  const linePoints = new Map(
-    lineSettings.map((setting) => [setting.productLine.trim().toLocaleLowerCase("es"), setting.reorderPoint]),
-  );
   const availability = new Map<
     string,
     { available: number; rows: number; productLine: string }
@@ -36,7 +47,11 @@ export function buildReorderAlertRows(
     const available = inventoryState?.available ?? 0;
     const hasInventoryRecord = Boolean(inventoryState?.rows);
     const reorderPoint = inventoryState
-      ? (linePoints.get(inventoryState.productLine.trim().toLocaleLowerCase("es")) ?? item.reorderPoint)
+      ? getReorderPointForLine(
+          inventoryState.productLine,
+          lineSettings,
+          item.reorderPoint,
+        )
       : item.reorderPoint;
     const status = !hasInventoryRecord
       ? "missing"

@@ -4,7 +4,14 @@ import type { InventoryItem } from "@/types/inventory";
 type RawRow = Record<string, unknown>;
 
 const headerAliases = {
-  sku: ["sku", "referencia", "codigo", "codigo producto", "cod producto"],
+  sku: [
+    "sku",
+    "referencia",
+    "codigo",
+    "codigo producto",
+    "cod producto",
+    "id",
+  ],
   productName: ["producto", "nombre", "nombre producto", "descripcion"],
   productLine: [
     "linea",
@@ -21,6 +28,7 @@ const headerAliases = {
     "existencia fisica",
     "stock total empresa",
   ],
+  principalStock: ["stock bodega: principal (sucursal: principal)"],
   reserved: ["reservado", "cantidad reservada", "comprometido"],
   available: ["disponible", "cantidad disponible", "saldo disponible"],
 } as const;
@@ -39,7 +47,12 @@ function findValue(row: RawRow, aliases: readonly string[]) {
     Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]),
   );
   for (const alias of aliases) {
-    if (normalized.has(alias)) return normalized.get(alias);
+    if (!normalized.has(alias)) continue;
+    const value = normalized.get(alias);
+    if (value === undefined || value === null || String(value).trim() === "") {
+      continue;
+    }
+    return value;
   }
   return undefined;
 }
@@ -54,6 +67,13 @@ function isEffiConsolidatedExport(rows: RawRow[]) {
     headers.has("marca") &&
     headers.has("stock total empresa")
   );
+}
+
+function hasPrincipalWarehouseStock(rows: RawRow[]) {
+  const headers = new Set(
+    Object.keys(rows[0] ?? {}).map((header) => normalizeHeader(header)),
+  );
+  return headerAliases.principalStock.some((header) => headers.has(header));
 }
 
 function numericValue(value: unknown, field: string, rowNumber: number) {
@@ -82,6 +102,7 @@ export function normalizeInventoryRows(
   }
 
   const effiConsolidated = isEffiConsolidatedExport(rows);
+  const principalWarehouseStock = hasPrincipalWarehouseStock(rows);
   const inventoryRows = rows.filter((row) => {
     if (!Object.values(row).some((value) => String(value ?? "").trim())) {
       return false;
@@ -89,7 +110,12 @@ export function normalizeInventoryRows(
     if (!effiConsolidated) return true;
 
     const sku = String(findValue(row, headerAliases.sku) ?? "").trim();
-    const stock = findValue(row, headerAliases.stock);
+    const stock = findValue(
+      row,
+      principalWarehouseStock
+        ? headerAliases.principalStock
+        : headerAliases.stock,
+    );
     return Boolean(sku) && Number.isFinite(Number(stock));
   });
 
@@ -109,7 +135,7 @@ export function normalizeInventoryRows(
     ).trim();
     const warehouse = String(
       findValue(row, headerAliases.warehouse) ??
-        (effiConsolidated ? "Empresa" : ""),
+        (principalWarehouseStock ? "Principal" : effiConsolidated ? "Empresa" : ""),
     ).trim();
     const normalizedLine =
       productLine || (effiConsolidated ? "Sin marca" : "");
@@ -134,7 +160,12 @@ export function normalizeInventoryRows(
     seen.add(key);
 
     const stock = numericValue(
-      findValue(row, headerAliases.stock),
+      findValue(
+        row,
+        principalWarehouseStock
+          ? headerAliases.principalStock
+          : headerAliases.stock,
+      ),
       "existencia",
       rowNumber,
     );

@@ -2,10 +2,10 @@ import { Suspense } from "react";
 import { InventoryPageClient } from "@/components/inventory-page-client";
 import { InventoryProvider } from "@/components/providers/inventory-provider";
 import { Skeleton } from "@/components/ui/skeleton";
-import { loadInventoryData } from "@/lib/inventory/data";
+import { loadInventoryPageData } from "@/lib/inventory/data";
 
 export default async function InventoryPage() {
-  const data = await loadInventoryData();
+  const data = await loadInventoryPageData();
   return (
     <InventoryProvider value={data}>
       <Suspense

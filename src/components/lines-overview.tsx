@@ -13,7 +13,12 @@ import { PageHeader } from "@/components/page-header";
 import { useInventoryData } from "@/components/providers/inventory-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -27,6 +32,7 @@ import {
   PRIORITY_PRODUCT_LINES,
   type StockLevel,
 } from "@/lib/inventory/priority-lines";
+import { getReorderPointForLine } from "@/lib/inventory/reorder";
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("es-CO", {
@@ -74,8 +80,9 @@ function LevelBadge({ level }: { level: StockLevel }) {
 }
 
 export function LinesOverview() {
-  const data = useInventoryData();
-  const { current, lowStockThreshold } = data;
+  const { current, lowStockThreshold, reorderLineSettings } =
+    useInventoryData();
+
   const availablePriorityLines = useMemo(
     () =>
       PRIORITY_PRODUCT_LINES.filter((line) =>
@@ -90,11 +97,16 @@ export function LinesOverview() {
   const lineGroups = useMemo(
     () =>
       availablePriorityLines.map((line) => {
+        const reorderPoint = getReorderPointForLine(
+          line,
+          reorderLineSettings,
+          lowStockThreshold,
+        );
         const products = current
           .filter((item) => item.productLine === line)
           .map((item) => ({
             ...item,
-            level: getStockLevel(item.available, lowStockThreshold),
+            level: getStockLevel(item.available, reorderPoint),
           }))
           .sort(
             (a, b) =>
@@ -108,9 +120,13 @@ export function LinesOverview() {
           medium: products.filter((item) => item.level === "medium").length,
           high: products.filter((item) => item.level === "high").length,
         };
-        return { line, products, counts };
+        return {
+          line,
+          products,
+          counts,
+        };
       }),
-    [availablePriorityLines, current, lowStockThreshold],
+    [availablePriorityLines, current, lowStockThreshold, reorderLineSettings],
   );
 
   const selected =
@@ -121,7 +137,7 @@ export function LinesOverview() {
       <PageHeader
         eyebrow="Catálogo prioritario"
         title="Líneas principales"
-        description="Selecciona una línea para revisar sus productos y nivel de inventario."
+        description="Revisa el inventario de las líneas prioritarias y consulta rápidamente cuáles referencias requieren atención."
         icon={Layers3}
         action={
           <Button asChild variant="outline">
@@ -181,7 +197,7 @@ export function LinesOverview() {
         })}
       </section>
 
-      {selected && (
+      {selected ? (
         <Card>
           <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -263,18 +279,20 @@ export function LinesOverview() {
                     </div>
                     <LevelBadge level={item.level} />
                   </div>
-                  <p className="mt-3 text-sm">
-                    Disponible:{" "}
-                    <strong className="tabular-nums">
-                      {number.format(item.available)}
-                    </strong>
-                  </p>
+                  <div className="mt-3 text-sm">
+                    <p>
+                      Disponible:{" "}
+                      <strong className="tabular-nums">
+                        {number.format(item.available)}
+                      </strong>
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : null}
     </div>
   );
 }

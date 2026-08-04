@@ -282,6 +282,7 @@ export function ReorderWatchlist() {
         if (!response.ok) throw new Error(body.message);
       }
       toast.success("Punto por línea guardado", { description: `${lineRule}: ${linePoint} unidades.` });
+      window.dispatchEvent(new Event("reorder-alerts:refresh"));
       router.refresh();
     } catch (error) {
       toast.error("No pudimos guardar la regla", { description: error instanceof Error ? error.message : "Intenta nuevamente." });

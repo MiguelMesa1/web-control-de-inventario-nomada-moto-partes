@@ -1,13 +1,13 @@
+import { redirect } from "next/navigation";
 import { InventoryUpload } from "@/components/inventory-upload";
-import { InventoryProvider } from "@/components/providers/inventory-provider";
-import { loadInventoryData } from "@/lib/inventory/data";
+import { isInsForgeConfigured } from "@/lib/insforge/config";
+import { getAppProfile } from "@/lib/insforge/session";
 
 export default async function UploadsPage() {
-  const data = await loadInventoryData();
+  const profile = await getAppProfile();
+  if (profile.role !== "admin" && profile.role !== "uploader") {
+    redirect("/dashboard");
+  }
 
-  return (
-    <InventoryProvider value={data}>
-      <InventoryUpload />
-    </InventoryProvider>
-  );
+  return <InventoryUpload isDemo={!isInsForgeConfigured()} />;
 }

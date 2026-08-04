@@ -1,12 +1,10 @@
 import { updateSession } from "@insforge/sdk/ssr/middleware";
 import { NextResponse, type NextRequest } from "next/server";
+import { isInsForgeConfigured } from "@/lib/insforge/config";
 
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request });
-  if (
-    process.env.NEXT_PUBLIC_INSFORGE_URL &&
-    process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY
-  ) {
+  if (isInsForgeConfigured()) {
     await updateSession({
       // RequestCookies is read-only in Next.js 16; the SDK only reads this store.
       requestCookies: request.cookies as never,
@@ -16,6 +14,6 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-export const proxyConfig = {
+export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

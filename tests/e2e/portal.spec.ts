@@ -7,19 +7,34 @@ test.describe("portal demo", () => {
 
   test("shows inventory KPIs and navigates to analytics", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: "Tu inventario, sin puntos ciegos." }),
+      page.getByRole("heading", {
+        name: "Mira qué se mueve, qué se agota y qué línea necesita atención.",
+      }),
     ).toBeVisible();
     await expect(page.getByText("Referencias activas", { exact: true })).toBeVisible();
-    await expect(page.locator("[data-chart]").first().locator("svg")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Indicadores principales" }),
+    ).toBeVisible();
 
     if (test.info().project.name.startsWith("mobile")) {
       await page.getByRole("button", { name: "Abrir menú" }).click();
     }
-    await page.getByRole("link", { name: "Analítica", exact: true }).click();
+    const analyticsLink = page.getByRole("link", {
+      name: "Analítica",
+      exact: true,
+    });
+    await Promise.all([
+      page.waitForURL("**/analytics"),
+      analyticsLink.click(),
+    ]);
     await expect(
-      page.getByRole("heading", { name: "Analítica de inventario" }),
+      page.getByRole("heading", {
+        name: "Productos que bajaron de inventario",
+      }),
     ).toBeVisible();
-    await expect(page.getByText("Hablamos de existencias, no de ventas")).toBeVisible();
+    await expect(
+      page.getByText(/una reducción representa movimiento de inventario/i),
+    ).toBeVisible();
   });
 
   test("filters inventory by product text", async ({ page }) => {
@@ -33,6 +48,12 @@ test.describe("portal demo", () => {
   });
 
   test("validates a CSV before publishing", async ({ page }) => {
+    const browserErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") browserErrors.push(message.text());
+    });
+    page.on("pageerror", (error) => browserErrors.push(error.message));
+
     await page.goto("/uploads");
     const input = page.getByLabel("Archivo de Effi");
     await expect(input).toBeEnabled();
@@ -46,9 +67,11 @@ test.describe("portal demo", () => {
     await expect(page.getByText("Validación correcta")).toBeVisible();
     await expect(page.getByRole("button", { name: "Publicar inventario" })).toBeEnabled();
     await page.getByRole("button", { name: "Publicar inventario" }).click();
-    await expect(page.getByRole("heading", { name: /Carga completada/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Procesando tu documento" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Documento procesado/ })).toBeVisible();
     await page.getByRole("button", { name: "Continuar" }).click();
-    await expect(page.getByRole("heading", { name: /Carga completada/ })).toBeHidden();
+    await expect(page.getByRole("heading", { name: /Documento procesado/ })).toBeHidden();
+    expect(browserErrors, browserErrors.join("\n")).toEqual([]);
   });
 
   test("exposes the mobile menu only at compact widths", async ({ page }) => {

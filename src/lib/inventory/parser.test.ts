@@ -78,6 +78,86 @@ describe("inventory file normalization", () => {
     expect(rows[1].productLine).toBe("Sin marca");
   });
 
+  it("uses Principal warehouse stock for products whose company stock does not apply", () => {
+    const rows = normalizeInventoryRows([
+      {
+        ID: 1088,
+        Nombre: "KIT SIN FAROLA BOXER CT 100 NEGRO",
+        Referencia: 1088,
+        Marca: "Bajaj",
+        "Stock total empresa": "-No aplica-",
+        "Stock bodega: Principal (Sucursal: Principal)": 31,
+      },
+      {
+        ID: 1,
+        Nombre: "FLETE",
+        Referencia: "",
+        Marca: "",
+        "Stock total empresa": "-No aplica-",
+        "Stock bodega: Principal (Sucursal: Principal)": "-No aplica-",
+      },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sku: "1088",
+      warehouse: "Principal",
+      stock: 31,
+      available: 31,
+    });
+  });
+
+  it("maps the supplied Effi format and uses ID when Referencia is empty", () => {
+    const rows = normalizeInventoryRows([
+      {
+        ID: 1,
+        Nombre: "FLETE",
+        Referencia: "",
+        Marca: "",
+        "Último costo": 0,
+        "Gestión de stock": "No",
+        "Stock total empresa": "-No aplica-",
+        "Stock bodega: Principal (Sucursal: Principal)": "-No aplica-",
+      },
+      {
+        ID: 876,
+        Nombre: "COLA DE SILLIN BASE INFERIOR TVS APACHE 200 (N9226840)",
+        Referencia: "",
+        Marca: "Tvs",
+        "Último costo": 0,
+        "Gestión de stock": "No",
+        "Stock total empresa": 3,
+        "Stock bodega: Principal (Sucursal: Principal)": 3,
+      },
+      {
+        ID: 1200,
+        Nombre: "CALCOMANIA YAMAHA XTZ 125",
+        Referencia: "001-XTZ125",
+        Marca: "XTZ 125",
+        "Último costo": 5000,
+        "Gestión de stock": "No",
+        "Stock total empresa": 8,
+        "Stock bodega: Principal (Sucursal: Principal)": 8,
+      },
+    ]);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      sku: "876",
+      productLine: "Tvs",
+      warehouse: "Principal",
+      stock: 3,
+      available: 3,
+    });
+    expect(rows[1]).toMatchObject({
+      sku: "001-XTZ125",
+      productLine: "XTZ 125",
+      warehouse: "Principal",
+      stock: 8,
+      available: 8,
+    });
+  });
+
   it("rejects missing required columns and invalid quantities", () => {
     expect(() => normalizeInventoryRows([{ SKU: "A-1" }])).toThrow(/faltan/i);
     expect(() =>

@@ -45,7 +45,7 @@
     --secondary: 60 1% 17%;
     --secondary-foreground: 0 0% 96%;
     --muted: 60 1% 16%;
-    --muted-foreground: 0 0% 65%;
+    --muted-foreground: 0 0% 69%;
     --accent: 57 100% 47%;
     --accent-foreground: 60 1% 7%;
     --destructive: 0 62% 42%;
@@ -64,9 +64,27 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply min-h-dvh bg-background text-foreground antialiased;
     background-image: radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 26rem);
     transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  ::selection {
+    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary) / 0.85);
+  }
+
+  :where(a, button, input, select, textarea, [role="button"]) {
+    touch-action: manipulation;
+  }
+
+  :where(button:not(:disabled), [role="button"]:not([aria-disabled="true"])) {
+    cursor: pointer;
+  }
+
+  * {
+    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-width: thin;
   }
 
   :focus-visible {
@@ -105,57 +123,204 @@
     contain-intrinsic-size: auto 88px;
   }
 
-  .mammoth-race-track {
+  .plastic-kit-color-card {
     position: relative;
-    height: 8.5rem;
+    isolation: isolate;
+    border-color: var(--kit-border);
+    background:
+      radial-gradient(circle at 92% 8%, var(--kit-surface), transparent 40%),
+      linear-gradient(var(--kit-surface), var(--kit-surface)),
+      hsl(var(--card));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 8px 22px rgb(0 0 0 / 0.07);
+  }
+
+  .plastic-kit-color-card::before {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 1;
+    height: 0.22rem;
+    pointer-events: none;
+    content: "";
+    background: var(--kit-border);
+  }
+
+  .plastic-kit-color-card[data-kit-emphasis="black"]::before {
+    height: 0.34rem;
+    background: #000;
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.12);
+  }
+
+  .plastic-kit-color-dot {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 0.45rem;
+    height: 0.45rem;
+    border: 1px solid hsl(var(--foreground) / 0.2);
+    border-radius: 999px;
+    background: var(--kit-border);
+    box-shadow: 0 0 0 2px hsl(var(--background) / 0.45);
+  }
+
+  .dark .plastic-kit-color-card {
+    border-color: var(--kit-border-dark);
+    background:
+      radial-gradient(circle at 92% 8%, var(--kit-surface-dark), transparent 40%),
+      linear-gradient(var(--kit-surface-dark), var(--kit-surface-dark)),
+      hsl(var(--card));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 10px 28px rgb(0 0 0 / 0.2);
+  }
+
+  .dark .plastic-kit-color-card::before,
+  .dark .plastic-kit-color-dot {
+    background: var(--kit-border-dark);
+  }
+
+  .dark .plastic-kit-color-card[data-kit-emphasis="black"]::before {
+    background: #000;
+  }
+
+  .mammoth-processing-stage {
+    position: relative;
+    isolation: isolate;
+    height: 11.25rem;
     overflow: hidden;
-    border-bottom: 0.4rem solid hsl(var(--primary));
+    border: 1px solid hsl(var(--primary) / 0.32);
+    border-radius: 1rem;
+    background:
+      radial-gradient(circle at 52% 76%, hsl(var(--primary) / 0.1), transparent 38%),
+      linear-gradient(180deg, hsl(60 1% 8%), hsl(60 2% 4%));
+    box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.04);
+  }
+
+  .mammoth-processing-stage::before {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    content: "";
     background-image:
-      linear-gradient(90deg, hsl(var(--primary) / 0.08), transparent 45%),
-      repeating-linear-gradient(90deg, transparent 0, transparent 1.5rem, hsl(var(--primary) / 0.14) 1.5rem, hsl(var(--primary) / 0.14) 1.65rem);
+      linear-gradient(hsl(var(--primary) / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--primary) / 0.035) 1px, transparent 1px);
+    background-size: 1.75rem 1.75rem;
+    mask-image: linear-gradient(to bottom, transparent, #000 30%, #000);
   }
 
-  .mammoth-race-finish {
+  .mammoth-processing-stage::after {
     position: absolute;
-    right: 0.5rem;
-    bottom: 0.35rem;
-    display: grid;
-    place-items: center;
-    width: 3.2rem;
-    height: 4.8rem;
-    color: hsl(var(--primary));
-    background: repeating-conic-gradient(#fff 0 25%, hsl(var(--foreground)) 0 50%) 50% / 0.75rem 0.75rem;
-    border: 0.25rem solid hsl(var(--primary));
-    animation: finish-flag 260ms 720ms ease-out both;
+    right: 8%;
+    bottom: 1.55rem;
+    left: 8%;
+    z-index: -1;
+    height: 0.2rem;
+    content: "";
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.5), transparent);
+    box-shadow: 0 0.65rem 1.25rem hsl(var(--primary) / 0.08);
   }
 
-  .mammoth-race-runner {
+  .mammoth-processing-runner {
     position: absolute;
-    bottom: -0.25rem;
-    left: -1.5rem;
-    width: 10rem;
-    animation: mammoth-arrives 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    bottom: -0.55rem;
+    left: 50%;
+    width: clamp(9rem, 38vw, 11rem);
+    transform: translate3d(-50%, 0, 0);
+    transform-origin: 52% 76%;
     will-change: transform;
   }
-}
 
-@keyframes mammoth-arrives {
-  0% { transform: translateX(-8rem) rotate(-4deg); }
-  72% { transform: translateX(calc(100vw - 14.5rem)) rotate(2deg); }
-  100% { transform: translateX(calc(100vw - 14.5rem)) rotate(0); }
-}
-
-@keyframes finish-flag {
-  from { opacity: 0; transform: scale(0.65); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@media (min-width: 640px) {
-  @keyframes mammoth-arrives {
-    0% { transform: translateX(-8rem) rotate(-4deg); }
-    72% { transform: translateX(16rem) rotate(2deg); }
-    100% { transform: translateX(16rem) rotate(0); }
+  .mammoth-processing-lines {
+    position: absolute;
+    bottom: 4.5rem;
+    left: max(1rem, calc(50% - 9rem));
+    display: grid;
+    gap: 0.55rem;
+    width: 4.25rem;
+    opacity: 0;
+    will-change: transform, opacity;
   }
+
+  .mammoth-processing-lines span {
+    height: 0.16rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.9));
+  }
+
+  .mammoth-processing-lines span:nth-child(2) {
+    width: 72%;
+    margin-left: 28%;
+  }
+
+  .mammoth-processing-lines span:nth-child(3) {
+    width: 48%;
+    margin-left: 52%;
+  }
+
+  .mammoth-processing-success {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: grid;
+    width: 3rem;
+    height: 3rem;
+    place-items: center;
+    color: hsl(var(--primary-foreground));
+    border-radius: 999px;
+    background: hsl(var(--primary));
+    box-shadow: 0 0 0 0.35rem hsl(var(--primary) / 0.12);
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  .mammoth-processing-stage[data-processing-state="processing"] .mammoth-processing-runner {
+    animation: mammoth-2d-running 420ms cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  }
+
+  .mammoth-processing-stage[data-processing-state="processing"] .mammoth-processing-lines {
+    animation: mammoth-speed-lines 520ms ease-in-out infinite;
+  }
+
+  .mammoth-processing-stage[data-processing-state="success"] .mammoth-processing-runner {
+    animation: mammoth-2d-settle 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .mammoth-processing-stage[data-processing-state="success"] .mammoth-processing-success {
+    animation: mammoth-success-in 240ms 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes mammoth-2d-running {
+  from { transform: translate3d(-51%, 0.08rem, 0) rotate(-3deg); }
+  to { transform: translate3d(-49%, -0.28rem, 0) rotate(3deg); }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.6rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes mammoth-speed-lines {
+  0% { opacity: 0; transform: translate3d(-0.5rem, 0, 0) scaleX(0.82); }
+  35% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate3d(0.75rem, 0, 0) scaleX(1); }
+}
+
+@keyframes mammoth-2d-settle {
+  from { transform: translate3d(-50%, -0.18rem, 0) rotate(2deg); }
+  to { transform: translate3d(-50%, 0, 0) rotate(0); }
+}
+
+@keyframes mammoth-success-in {
+  from { opacity: 0; transform: scale(0.72); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -166,5 +331,14 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .mammoth-processing-stage[data-processing-state="processing"] .mammoth-processing-runner {
+    transform: translate3d(-50%, 0, 0);
+  }
+
+  .mammoth-processing-stage[data-processing-state="processing"] .mammoth-processing-lines {
+    opacity: 0.45;
+    transform: none;
   }
 }

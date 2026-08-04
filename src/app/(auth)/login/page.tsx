@@ -12,8 +12,8 @@ export default function LoginPage() {
   const configured = isInsForgeConfigured();
   return (
     <main className="racing-grid min-h-dvh bg-background p-4 text-foreground sm:p-6 lg:p-10">
-      <div className="mx-auto grid min-h-[calc(100dvh-5rem)] max-w-7xl overflow-hidden rounded-[2rem] border border-border bg-card shadow-2xl lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="racing-stripe relative flex min-h-[34rem] flex-col justify-between overflow-hidden border-b border-border bg-secondary p-6 text-secondary-foreground sm:p-10 lg:border-b-0 lg:border-r lg:p-14">
+      <div className="mx-auto grid min-h-[calc(100dvh-5rem)] max-w-7xl overflow-hidden rounded-[2rem] border border-border bg-card shadow-2xl xl:grid-cols-[1.08fr_0.92fr]">
+        <section className="racing-stripe relative flex min-h-[30rem] flex-col justify-between overflow-hidden border-b border-border bg-secondary p-6 text-secondary-foreground sm:p-10 xl:min-h-[34rem] xl:border-b-0 xl:border-r xl:p-14">
           <div className="absolute -right-24 -top-24 size-80 rounded-full bg-primary/10 blur-3xl" />
           <BrandMark
             transparent
@@ -37,7 +37,7 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <section className="relative flex items-center justify-center bg-card p-5 text-card-foreground sm:p-10 lg:px-12">
+        <section className="relative flex items-center justify-center bg-card p-5 text-card-foreground sm:p-10 xl:px-12">
           <ThemeToggle className="absolute right-5 top-5 sm:right-8 sm:top-8" />
           <Card className="w-full max-w-lg border-border/80 bg-background/70 shadow-xl dark:border-white/10 dark:bg-white/[0.035]">
             <CardHeader>

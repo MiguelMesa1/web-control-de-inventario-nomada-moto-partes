@@ -4,6 +4,7 @@ import type {
   InventoryHistoryPoint,
   InventoryItem,
   InventorySnapshot,
+  PlasticKitDefinition,
   ReorderWatchItem,
   UserProfile,
 } from "@/types/inventory";
@@ -21,6 +22,16 @@ const baseProducts = [
   ["NM-010", "Retenedor telescópico", "Suspensión", "Norte", 3, 0],
   ["NM-011", "Espejo deportivo carbono", "Accesorios", "Principal", 42, 4],
   ["NM-012", "Slider protector universal", "Accesorios", "Norte", 0, 0],
+  ["2220201", "Carenaje sin farola Bajaj Boxer CT 100 negro", "Bajaj", "Principal", 20, 0],
+  ["2420201", "Cola de sillín Bajaj Boxer CT 100 negro", "Bajaj", "Principal", 16, 0],
+  ["2521631", "Guardabarro delantero Boxer CT 100 negro", "Bajaj", "Principal", 13, 0],
+  ["2720201", "Tapas laterales Bajaj Boxer CT 100 negro", "Bajaj", "Principal", 10, 0],
+  ["4620201", "Farola Bajaj Boxer CT 100", "Bajaj", "Principal", 7, 0],
+  ["2292401", "Carenaje sin farola Yamaha XTZ 125 negro", "Yamaha", "Principal", 18, 0],
+  ["2592411", "Guardabarro delantero Yamaha XTZ 125 negro", "Yamaha", "Principal", 12, 0],
+  ["2692401", "Guardabarro trasero Yamaha XTZ 125 negro", "Yamaha", "Principal", 14, 0],
+  ["2792401", "Tapas laterales Yamaha XTZ 125 negro", "Yamaha", "Principal", 9, 0],
+  ["2792411", "Tapas tanque Yamaha XTZ 125 negro", "Yamaha", "Principal", 11, 0],
 ] as const;
 
 const today = new Date();
@@ -104,6 +115,42 @@ export const demoProfile: UserProfile = {
   isPrimary: true,
   lastLoginAt: today.toISOString(),
 };
+
+export const demoPlasticKits: PlasticKitDefinition[] = [
+  {
+    id: "demo-kit-boxer-negro",
+    name: "Kit Boxer CT 100 negro",
+    brand: "Bajaj",
+    color: "Negro",
+    hasHeadlight: false,
+    model: "Boxer CT 100",
+    warehouse: "Principal",
+    active: true,
+    parts: [
+      { sku: "2220201", productName: "Carenaje sin farola Bajaj Boxer CT 100 negro", quantityRequired: 1, position: 0 },
+      { sku: "2420201", productName: "Cola de sillín Bajaj Boxer CT 100 negro", quantityRequired: 1, position: 1 },
+      { sku: "2521631", productName: "Guardabarro delantero Boxer CT 100 negro", quantityRequired: 1, position: 2 },
+      { sku: "2720201", productName: "Tapas laterales Bajaj Boxer CT 100 negro", quantityRequired: 1, position: 3 },
+    ],
+  },
+  {
+    id: "demo-kit-xtz-negro",
+    name: "Kit Yamaha XTZ 125 negro",
+    brand: "Yamaha",
+    color: "Negro",
+    hasHeadlight: false,
+    model: "XTZ 125",
+    warehouse: "Principal",
+    active: true,
+    parts: [
+      { sku: "2292401", productName: "Carenaje sin farola Yamaha XTZ 125 negro", quantityRequired: 1, position: 0 },
+      { sku: "2592411", productName: "Guardabarro delantero Yamaha XTZ 125 negro", quantityRequired: 1, position: 1 },
+      { sku: "2692401", productName: "Guardabarro trasero Yamaha XTZ 125 negro", quantityRequired: 1, position: 2 },
+      { sku: "2792401", productName: "Tapas laterales Yamaha XTZ 125 negro", quantityRequired: 1, position: 3 },
+      { sku: "2792411", productName: "Tapas tanque Yamaha XTZ 125 negro", quantityRequired: 1, position: 4 },
+    ],
+  },
+];
 
 export const demoReorderWatchlist: ReorderWatchItem[] = demoCurrent
   .slice(6, 11)
