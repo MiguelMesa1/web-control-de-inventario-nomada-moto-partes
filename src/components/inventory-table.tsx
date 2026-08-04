@@ -177,7 +177,7 @@ export function InventoryTable({
                 setPage(1);
               }}
             >
-              <SelectTrigger className="h-11">
+              <SelectTrigger className="h-11" aria-label="Filtrar por línea">
                 <SelectValue placeholder="Todas las líneas" />
               </SelectTrigger>
               <SelectContent>
@@ -199,7 +199,7 @@ export function InventoryTable({
                 setPage(1);
               }}
             >
-              <SelectTrigger className="h-11">
+              <SelectTrigger className="h-11" aria-label="Filtrar por disponibilidad">
                 <SelectValue placeholder="Disponibilidad" />
               </SelectTrigger>
               <SelectContent>

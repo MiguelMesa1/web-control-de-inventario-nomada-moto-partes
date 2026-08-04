@@ -199,7 +199,8 @@ export function SettingsPanel({
         description="Ajusta los criterios que alimentan alertas, rankings y gráficas."
         icon={Settings2}
       />
-      <Card className="max-w-2xl">
+      <section className="grid gap-6 xl:grid-cols-[minmax(18rem,0.72fr)_minmax(0,1.28fr)] xl:items-start">
+      <Card className="h-fit">
         <CardHeader>
           <CardTitle className="font-display text-2xl uppercase">
             Umbral de inventario bajo
@@ -237,7 +238,7 @@ export function SettingsPanel({
         </CardContent>
       </Card>
 
-      <Card className="max-w-4xl border-primary/30">
+      <Card className="border-primary/30">
         <CardHeader>
           <div className="flex items-start gap-3">
             <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
@@ -361,6 +362,7 @@ export function SettingsPanel({
           </Alert>
         </CardContent>
       </Card>
+      </section>
 
       <Card>
         <CardHeader>

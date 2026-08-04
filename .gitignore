@@ -23,6 +23,7 @@ test-results/
 .vercel/
 .turbo/
 .cache/
+.tmp/
 .env
 .env.local
 .env*.local

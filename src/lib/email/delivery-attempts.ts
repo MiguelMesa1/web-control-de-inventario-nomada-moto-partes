@@ -1,8 +1,6 @@
+import { createAuthenticatedInsForgeServerClient } from "@/lib/insforge/authenticated-server";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
-import {
-  createInsForgeAdminClient,
-  createInsForgeServerClient,
-} from "@/lib/insforge/server";
+import { createInsForgeAdminClient } from "@/lib/insforge/server";
 import type { EmailDeliveryAttempt } from "@/types/inventory";
 
 type RecordEmailDeliveryAttempt = Omit<
@@ -43,7 +41,7 @@ export async function loadEmailDeliveryAttempts(
 ): Promise<EmailDeliveryAttempt[]> {
   if (!isInsForgeConfigured()) return [];
 
-  const insforge = await createInsForgeServerClient();
+  const insforge = await createAuthenticatedInsForgeServerClient();
   const { data, error } = await insforge.database
     .from("email_delivery_attempts")
     .select(

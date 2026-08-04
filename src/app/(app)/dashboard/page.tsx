@@ -1,7 +1,7 @@
 import { DashboardOverview } from "@/components/dashboard-overview";
-import { loadInventoryData } from "@/lib/inventory/data";
+import { loadDashboardData } from "@/lib/inventory/data";
 
 export default async function DashboardPage() {
-  const data = await loadInventoryData();
+  const data = await loadDashboardData();
   return <DashboardOverview data={data} />;
 }

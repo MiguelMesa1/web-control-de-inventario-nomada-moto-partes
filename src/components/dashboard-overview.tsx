@@ -125,7 +125,7 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
     <div className="flex flex-col gap-6">
       <section className="racing-stripe relative overflow-hidden rounded-3xl border bg-secondary p-5 text-secondary-foreground md:p-8">
         <div className="absolute -right-20 -top-24 size-72 rounded-full bg-primary/15 blur-3xl" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="relative flex flex-col gap-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
           <div className="max-w-3xl">
             <h1 className="font-display text-3xl font-bold uppercase leading-tight tracking-wide sm:text-4xl">
               Mira qué se mueve, qué se agota y qué línea necesita atención.

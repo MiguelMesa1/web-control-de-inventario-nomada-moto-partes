@@ -123,6 +123,41 @@ export interface ReorderLineSetting {
   reorderPoint: number;
 }
 
+export interface PlasticKitPartDefinition {
+  id?: string;
+  sku: string;
+  productName: string;
+  quantityRequired: number;
+  position: number;
+}
+
+export interface PlasticKitDefinition {
+  id: string;
+  name: string;
+  brand: string;
+  color: string;
+  hasHeadlight: boolean;
+  model?: string;
+  warehouse: string;
+  active: boolean;
+  parts: PlasticKitPartDefinition[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PlasticKitPartAvailability extends PlasticKitPartDefinition {
+  available: number;
+  kitCapacity: number;
+  hasInventoryRecord: boolean;
+  isLimiting: boolean;
+}
+
+export interface PlasticKitAvailability extends PlasticKitDefinition {
+  available: number;
+  parts: PlasticKitPartAvailability[];
+  limitingPartSkus: string[];
+}
+
 export type ReorderStatus = "missing" | "exhausted" | "reorder" | "healthy";
 
 export interface ReorderAlertRow extends ReorderWatchItem {

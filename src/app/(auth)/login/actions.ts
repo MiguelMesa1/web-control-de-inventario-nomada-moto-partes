@@ -4,6 +4,7 @@ import { createAuthActions } from "@insforge/sdk/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
+import { translateLoginError } from "@/lib/insforge/auth-errors";
 
 export type LoginState = {
   error?: string;
@@ -27,9 +28,7 @@ export async function signInAction(
   const { data, error } = await auth.signInWithPassword({ email, password });
   if (error || !data?.user) {
     return {
-      error:
-        error?.message ??
-        "No pudimos iniciar sesión. Revisa tus datos e intenta de nuevo.",
+      error: translateLoginError(error?.message),
     };
   }
 

@@ -4,7 +4,14 @@ import type { InventoryItem } from "@/types/inventory";
 type RawRow = Record<string, unknown>;
 
 const headerAliases = {
-  sku: ["sku", "referencia", "codigo", "codigo producto", "cod producto"],
+  sku: [
+    "sku",
+    "referencia",
+    "codigo",
+    "codigo producto",
+    "cod producto",
+    "id",
+  ],
   productName: ["producto", "nombre", "nombre producto", "descripcion"],
   productLine: [
     "linea",
@@ -40,7 +47,12 @@ function findValue(row: RawRow, aliases: readonly string[]) {
     Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]),
   );
   for (const alias of aliases) {
-    if (normalized.has(alias)) return normalized.get(alias);
+    if (!normalized.has(alias)) continue;
+    const value = normalized.get(alias);
+    if (value === undefined || value === null || String(value).trim() === "") {
+      continue;
+    }
+    return value;
   }
   return undefined;
 }

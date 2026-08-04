@@ -175,7 +175,7 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-background">
-      <aside className="racing-grid fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card/95 p-5 shadow-[8px_0_30px_hsl(var(--foreground)/0.025)] backdrop-blur lg:flex lg:flex-col">
+      <aside className="racing-grid fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card/95 p-5 shadow-[8px_0_30px_hsl(var(--foreground)/0.025)] backdrop-blur xl:flex xl:flex-col">
         <BrandMark />
         <div className="mt-9 flex-1 overflow-y-auto pr-1">
           <Navigation profile={profile} />
@@ -191,9 +191,9 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className="lg:pl-72">
+      <div className="xl:pl-72">
         <header className="sticky top-0 z-30 flex h-[4.5rem] items-center justify-between border-b bg-background/90 px-4 shadow-[0_1px_0_hsl(var(--border)/0.45)] backdrop-blur-xl md:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3 lg:hidden">
+          <div className="flex min-w-0 items-center gap-3 xl:hidden">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon" aria-label="Abrir menú">
@@ -218,7 +218,7 @@ export function AppShell({
             <BrandMark compact />
           </div>
 
-          <div className="hidden items-center gap-3 lg:flex">
+          <div className="hidden items-center gap-3 xl:flex">
             <span className="size-2.5 rounded-full bg-primary shadow-[0_0_12px_rgba(240,227,0,0.8)]" />
             <p className="text-sm font-semibold text-muted-foreground">
               {isDemo ? "Modo demostración" : "Conectado"}
@@ -236,7 +236,7 @@ export function AppShell({
                       {initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden text-left md:block">
+                  <span className="hidden text-left xl:block">
                     <span className="block max-w-44 truncate text-sm font-semibold">
                       {profile.displayName}
                     </span>
@@ -255,12 +255,16 @@ export function AppShell({
                   </span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem asChild>
-                    <Link href="/settings">Configuración</Link>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
+                {profile.role === "admin" && (
+                  <>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem asChild>
+                        <Link href="/settings">Configuración</Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem
                   disabled={isSigningOut}
                   onSelect={(event) => {
