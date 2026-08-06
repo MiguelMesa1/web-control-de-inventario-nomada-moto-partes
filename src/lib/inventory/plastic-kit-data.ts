@@ -8,7 +8,7 @@ type DbPlasticKit = {
   name: string;
   brand: string;
   color: string;
-  has_headlight: boolean;
+  has_headlight: boolean | null;
   model: string | null;
   warehouse: string;
   active: boolean;
@@ -73,7 +73,8 @@ export async function loadPlasticKitDefinitions(): Promise<PlasticKitDefinition[
     name: String(kit.name),
     brand: String(kit.brand),
     color: String(kit.color),
-    hasHeadlight: Boolean(kit.has_headlight),
+    hasHeadlight:
+      kit.has_headlight === null ? null : Boolean(kit.has_headlight),
     model: kit.model ? String(kit.model) : undefined,
     warehouse: String(kit.warehouse),
     active: Boolean(kit.active),

@@ -3,6 +3,8 @@
 import {
   Boxes,
   CircleAlert,
+  Lightbulb,
+  LightbulbOff,
   LoaderCircle,
   PackagePlus,
   Search,
@@ -30,9 +32,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
 import { calculatePlasticKitAvailability } from "@/lib/inventory/plastic-kits";
+import {
+  normalizePlasticKitHeadlight,
+  plasticKitLineSupportsHeadlight,
+} from "@/lib/inventory/plastic-kit-headlight";
 import { buildPlasticKitSavePayload } from "@/lib/inventory/plastic-kit-request";
-import { PRIORITY_PRODUCT_LINES } from "@/lib/inventory/priority-lines";
+import { PLASTIC_KIT_LINE_OPTIONS } from "@/lib/inventory/plastic-kit-taxonomy";
 import type {
   InventoryItem,
   PlasticKitDefinition,
@@ -43,7 +54,7 @@ type FormState = {
   name: string;
   line: string;
   color: string;
-  hasHeadlight: boolean;
+  hasHeadlight: boolean | null;
   parts: PlasticKitPartDefinition[];
 };
 
@@ -53,7 +64,7 @@ const emptyForm: FormState = {
   name: "",
   line: "",
   color: "",
-  hasHeadlight: false,
+  hasHeadlight: null,
   parts: [],
 };
 
@@ -63,7 +74,10 @@ function formFromKit(kit: PlasticKitDefinition | null): FormState {
     name: kit.name,
     line: kit.model?.trim() || kit.brand.trim(),
     color: kit.color,
-    hasHeadlight: kit.hasHeadlight,
+    hasHeadlight: normalizePlasticKitHeadlight(
+      kit.model ?? kit.brand,
+      kit.hasHeadlight,
+    ),
     parts: kit.parts.map((part) => ({ ...part })),
   };
 }
@@ -87,6 +101,10 @@ export function PlasticKitDialog({
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const hasSelectedLine = form.line.trim().length > 0;
+  const supportsHeadlight =
+    hasSelectedLine && plasticKitLineSupportsHeadlight(form.line);
+  const usesHeadlightFeature = form.hasHeadlight !== null;
 
   const inventoryOptions = useMemo(() => {
     const options = new Map<string, InventoryItem>();
@@ -133,7 +151,7 @@ export function PlasticKitDialog({
     !form.name.trim() ||
     !form.line.trim() ||
     !form.color.trim();
-  const tooFewParts = form.parts.length < 2;
+  const tooFewParts = form.parts.length < 1;
 
   function addPart(item: InventoryItem) {
     const sku = item.sku.trim();
@@ -244,7 +262,16 @@ export function PlasticKitDialog({
                 <Label htmlFor="kit-line">Línea principal</Label>
                 <Select
                   value={form.line}
-                  onValueChange={(line) => setForm((value) => ({ ...value, line }))}
+                  onValueChange={(line) =>
+                    setForm((value) => ({
+                      ...value,
+                      line,
+                      hasHeadlight: normalizePlasticKitHeadlight(
+                        line,
+                        value.hasHeadlight,
+                      ),
+                    }))
+                  }
                 >
                   <SelectTrigger
                     id="kit-line"
@@ -254,7 +281,7 @@ export function PlasticKitDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      {PRIORITY_PRODUCT_LINES.map((line) => (
+                      {PLASTIC_KIT_LINE_OPTIONS.map((line) => (
                         <SelectItem key={line} value={line}>{line}</SelectItem>
                       ))}
                     </SelectGroup>
@@ -271,34 +298,86 @@ export function PlasticKitDialog({
                   onChange={(event) => setForm((value) => ({ ...value, color: event.target.value }))}
                 />
               </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="kit-headlight">Farola</Label>
-                <Select
-                  value={form.hasHeadlight ? "with" : "without"}
-                  onValueChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      hasHeadlight: value === "with",
-                    }))
-                  }
+              <div className="flex flex-col gap-4 rounded-xl border bg-muted/20 p-4 sm:col-span-2">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="kit-uses-headlight" className="font-semibold">
+                      Este kit maneja farola
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      {!hasSelectedLine
+                        ? "Selecciona primero una línea principal."
+                        : supportsHeadlight
+                          ? "Actívalo para elegir si esta presentación la incluye."
+                          : "La línea SuperLander no maneja esta característica."}
+                    </p>
+                  </div>
+                  <Switch
+                    id="kit-uses-headlight"
+                    checked={usesHeadlightFeature}
+                    disabled={!supportsHeadlight}
+                    onCheckedChange={(checked) =>
+                      setForm((current) => ({
+                        ...current,
+                        hasHeadlight: checked ? false : null,
+                      }))
+                    }
+                    aria-label="Indicar si el kit maneja farola"
+                  />
+                </div>
+
+                <div
+                  className="flex flex-col gap-2"
+                  data-disabled={!usesHeadlightFeature || !supportsHeadlight}
                 >
-                  <SelectTrigger id="kit-headlight">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="with">Con farola</SelectItem>
-                      <SelectItem value="without">Sin farola</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                  <Label>Presentación del kit</Label>
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    value={
+                      form.hasHeadlight === null
+                        ? ""
+                        : form.hasHeadlight
+                          ? "with"
+                          : "without"
+                    }
+                    disabled={!usesHeadlightFeature || !supportsHeadlight}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      setForm((current) => ({
+                        ...current,
+                        hasHeadlight: value === "with",
+                      }));
+                    }}
+                    className="grid grid-cols-2"
+                    aria-label="Elegir presentación de farola"
+                  >
+                    <ToggleGroupItem
+                      value="with"
+                      className="min-h-11 rounded-xl"
+                    >
+                      <Lightbulb aria-hidden="true" /> Con farola
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value="without"
+                      className="min-h-11 rounded-xl"
+                    >
+                      <LightbulbOff aria-hidden="true" /> Sin farola
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                  {!usesHeadlightFeature && supportsHeadlight ? (
+                    <p className="text-xs text-muted-foreground">
+                      Activa la opción anterior para habilitar estos botones.
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </section>
 
             <section className="flex flex-col gap-3" aria-labelledby="kit-parts-title">
               <div>
                 <h3 id="kit-parts-title" className="font-display text-lg font-bold uppercase">Piezas del kit</h3>
-                <p className="text-sm text-muted-foreground">Busca en el último inventario por referencia o nombre. Agrega mínimo dos piezas.</p>
+                <p className="text-sm text-muted-foreground">Busca en el último inventario por referencia o nombre. Un kit puede tener desde una pieza.</p>
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-3.5 size-4 text-muted-foreground" aria-hidden="true" />
@@ -373,7 +452,7 @@ export function PlasticKitDialog({
               </div>
               {submitted && tooFewParts && (
                 <p className="flex items-center gap-2 text-sm font-medium text-destructive" role="alert">
-                  <CircleAlert className="size-4" /> Agrega al menos dos piezas.
+                  <CircleAlert className="size-4" /> Agrega al menos una pieza.
                 </p>
               )}
             </section>

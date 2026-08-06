@@ -136,7 +136,7 @@ export interface PlasticKitDefinition {
   name: string;
   brand: string;
   color: string;
-  hasHeadlight: boolean;
+  hasHeadlight: boolean | null;
   model?: string;
   warehouse: string;
   active: boolean;

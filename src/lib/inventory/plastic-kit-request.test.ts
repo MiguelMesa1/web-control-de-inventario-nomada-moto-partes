@@ -45,4 +45,21 @@ describe("buildPlasticKitSavePayload", () => {
       true,
     );
   });
+
+  it("fuerza SuperLander al estado no aplica", () => {
+    expect(
+      buildPlasticKitSavePayload({
+        ...kit,
+        brand: "SuperLander",
+        model: "SuperLander",
+        hasHeadlight: true,
+      }),
+    ).toHaveProperty("hasHeadlight", null);
+  });
+
+  it("permite guardar un kit cuya farola no aplica", () => {
+    expect(
+      buildPlasticKitSavePayload({ ...kit, hasHeadlight: null }),
+    ).toHaveProperty("hasHeadlight", null);
+  });
 });
