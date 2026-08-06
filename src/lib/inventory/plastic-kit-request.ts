@@ -1,4 +1,5 @@
 import type { PlasticKitDefinition } from "@/types/inventory";
+import { normalizePlasticKitHeadlight } from "./plastic-kit-headlight";
 
 export function buildPlasticKitSavePayload(
   definition: PlasticKitDefinition,
@@ -8,7 +9,10 @@ export function buildPlasticKitSavePayload(
     name: definition.name,
     brand: definition.brand,
     color: definition.color,
-    hasHeadlight: definition.hasHeadlight,
+    hasHeadlight: normalizePlasticKitHeadlight(
+      definition.model ?? definition.brand,
+      definition.hasHeadlight,
+    ),
     model: definition.model,
     warehouse: definition.warehouse,
     active: definition.active,

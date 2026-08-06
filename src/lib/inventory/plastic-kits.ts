@@ -3,6 +3,7 @@ import type {
   PlasticKitAvailability,
   PlasticKitDefinition,
 } from "@/types/inventory";
+import { getPlasticKitModel } from "@/lib/inventory/plastic-kit-taxonomy";
 
 function inventoryKey(warehouse: string, sku: string) {
   return `${warehouse.trim().toLocaleLowerCase("es")}|${sku.trim().toLocaleLowerCase("es")}`;
@@ -13,11 +14,19 @@ export function comparePlasticKitsForDisplay(
   b: PlasticKitDefinition,
 ) {
   return (
-    Number(a.hasHeadlight) - Number(b.hasHeadlight) ||
-    a.brand.localeCompare(b.brand, "es") ||
-    (a.model ?? "").localeCompare(b.model ?? "", "es") ||
-    a.name.localeCompare(b.name, "es")
+    headlightOrder(a.hasHeadlight) - headlightOrder(b.hasHeadlight) ||
+    getPlasticKitModel(a).localeCompare(getPlasticKitModel(b), "es", {
+      numeric: true,
+      sensitivity: "base",
+    }) ||
+    a.name.localeCompare(b.name, "es", { numeric: true, sensitivity: "base" }) ||
+    a.color.localeCompare(b.color, "es", { sensitivity: "base" })
   );
+}
+
+function headlightOrder(value: boolean | null) {
+  if (value === null) return 2;
+  return value ? 1 : 0;
 }
 
 export function calculatePlasticKitAvailability(

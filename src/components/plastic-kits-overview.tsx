@@ -11,7 +11,10 @@ import {
   PackageX,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
+  SlidersHorizontal,
+  Sparkles,
   Trash2,
   Warehouse,
 } from "lucide-react";
@@ -33,24 +36,46 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getPlasticKitColorStyle } from "@/lib/inventory/plastic-kit-colors";
+import {
+  normalizePlasticKitHeadlight,
+  plasticKitLineSupportsHeadlight,
+} from "@/lib/inventory/plastic-kit-headlight";
 import {
   calculatePlasticKitAvailability,
   comparePlasticKitsForDisplay,
 } from "@/lib/inventory/plastic-kits";
 import { buildPlasticKitSavePayload } from "@/lib/inventory/plastic-kit-request";
 import {
+  getPlasticKitFamily,
+  getPlasticKitModel,
+  matchesPlasticKitSearch,
+  PLASTIC_KIT_FAMILIES,
+  type PlasticKitFamilyId,
+} from "@/lib/inventory/plastic-kit-taxonomy";
+import {
   normalizeInventoryText,
-  PRIORITY_PRODUCT_LINES,
 } from "@/lib/inventory/priority-lines";
 import type { PlasticKitAvailability, PlasticKitDefinition } from "@/types/inventory";
 
 const number = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 });
 const copySuffixPattern = /\s+\(copia(?: \d+)?\)$/i;
 const PRIMARY_WAREHOUSE = "Principal";
+type HeadlightChoice = "all" | "with" | "without" | "not-applicable";
 
 function kitLine(kit: PlasticKitDefinition) {
   return kit.model?.trim() || kit.brand.trim();
+}
+
+function kitIncludesHeadlight(kit: PlasticKitDefinition) {
+  return normalizePlasticKitHeadlight(kitLine(kit), kit.hasHeadlight);
 }
 
 function duplicateKitName(name: string, existingNames: string[]) {
@@ -97,7 +122,10 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
   const isAdmin = profile.role === "admin";
   const [definitions, setDefinitions] = useState(initialKits);
   const [query, setQuery] = useState("");
-  const [line, setLine] = useState("all");
+  const [family, setFamily] = useState<"all" | PlasticKitFamilyId>("all");
+  const [model, setModel] = useState("all");
+  const [color, setColor] = useState("all");
+  const [headlight, setHeadlight] = useState<HeadlightChoice>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogSession, setDialogSession] = useState(0);
   const [editing, setEditing] = useState<PlasticKitDefinition | null>(null);
@@ -114,27 +142,95 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
       ).sort(comparePlasticKitsForDisplay),
     [current, definitions],
   );
-  const lineCounts = useMemo(() => {
+  const familyCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const kit of kits) {
-      const normalizedLine = normalizeInventoryText(kitLine(kit));
-      counts.set(normalizedLine, (counts.get(normalizedLine) ?? 0) + 1);
+      const kitFamily = getPlasticKitFamily(kit);
+      counts.set(kitFamily, (counts.get(kitFamily) ?? 0) + 1);
     }
     return counts;
   }, [kits]);
+  const selectedFamily = PLASTIC_KIT_FAMILIES.find((item) => item.id === family);
+  const modelCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const kit of kits) {
+      if (family !== "all" && getPlasticKitFamily(kit) !== family) continue;
+      const kitModel = normalizeInventoryText(getPlasticKitModel(kit));
+      counts.set(kitModel, (counts.get(kitModel) ?? 0) + 1);
+    }
+    return counts;
+  }, [family, kits]);
+  const colorOptions = useMemo(() => {
+    const options = new Map<string, { label: string; count: number }>();
+    for (const kit of kits) {
+      if (family !== "all" && getPlasticKitFamily(kit) !== family) continue;
+      if (model !== "all" && normalizeInventoryText(getPlasticKitModel(kit)) !== model) continue;
+      const key = normalizeInventoryText(kit.color);
+      const currentOption = options.get(key);
+      options.set(key, {
+        label: currentOption?.label ?? kit.color,
+        count: (currentOption?.count ?? 0) + 1,
+      });
+    }
+    return [...options.entries()].sort(([, a], [, b]) =>
+      a.label.localeCompare(b.label, "es"),
+    );
+  }, [family, kits, model]);
+  const headlightCounts = useMemo(() => {
+    let withHeadlight = 0;
+    let withoutHeadlight = 0;
+    let notApplicable = 0;
+    for (const kit of kits) {
+      const matchesFamily = family === "all" || getPlasticKitFamily(kit) === family;
+      const matchesModel =
+        model === "all" || normalizeInventoryText(getPlasticKitModel(kit)) === model;
+      const matchesColor =
+        color === "all" || normalizeInventoryText(kit.color) === color;
+      if (!matchesFamily || !matchesModel || !matchesColor) continue;
+      const headlightValue = kitIncludesHeadlight(kit);
+      if (headlightValue === null) notApplicable += 1;
+      else if (headlightValue) withHeadlight += 1;
+      else withoutHeadlight += 1;
+    }
+    return { withHeadlight, withoutHeadlight, notApplicable };
+  }, [color, family, kits, model]);
   const visibleKits = useMemo(() => {
-    const normalized = deferredQuery.trim().toLocaleLowerCase("es");
     return kits.filter((kit) => {
-      const matchesLine =
-        line === "all" ||
-        normalizeInventoryText(kitLine(kit)) === normalizeInventoryText(line);
-      const haystack = [kit.name, kit.brand, kit.model, kit.color, ...kit.parts.flatMap((part) => [part.sku, part.productName])]
-        .filter(Boolean)
-        .join(" ")
-        .toLocaleLowerCase("es");
-      return matchesLine && (!normalized || haystack.includes(normalized));
+      const matchesFamily = family === "all" || getPlasticKitFamily(kit) === family;
+      const matchesModel =
+        model === "all" || normalizeInventoryText(getPlasticKitModel(kit)) === model;
+      const matchesColor =
+        color === "all" || normalizeInventoryText(kit.color) === color;
+      const headlightValue = kitIncludesHeadlight(kit);
+      const matchesHeadlight =
+        headlight === "all" ||
+        (headlight === "with" && headlightValue === true) ||
+        (headlight === "without" && headlightValue === false) ||
+        (headlight === "not-applicable" && headlightValue === null);
+      return (
+        matchesFamily &&
+        matchesModel &&
+        matchesColor &&
+        matchesHeadlight &&
+        matchesPlasticKitSearch(kit, deferredQuery)
+      );
     });
-  }, [deferredQuery, kits, line]);
+  }, [color, deferredQuery, family, headlight, kits, model]);
+
+  const hasActiveSelection =
+    family !== "all" ||
+    model !== "all" ||
+    color !== "all" ||
+    headlight !== "all" ||
+    query.trim().length > 0;
+
+  function resetSelection() {
+    setFamily("all");
+    setModel("all");
+    setColor("all");
+    setHeadlight("all");
+    setQuery("");
+  }
 
   const totalStock = kits.reduce((total, kit) => total + kit.available, 0);
   const exhausted = kits.filter((kit) => kit.available <= 0).length;
@@ -271,46 +367,183 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar kit, pieza o SKU…"
+                  placeholder="Por nombre de kit, pieza o SKU…"
                   className="h-11 pl-10"
                   aria-label="Buscar kits"
                 />
               </div>
             </div>
           </div>
-          <div
-            className="flex flex-wrap gap-2"
-            role="group"
-            aria-label="Filtrar kits por línea principal"
+          <section
+            className="overflow-hidden rounded-2xl border bg-muted/25"
+            aria-labelledby="kit-combination-title"
           >
-            <Button
-              type="button"
-              size="sm"
-              variant={line === "all" ? "default" : "outline"}
-              className="min-h-11 rounded-full px-4"
-              aria-pressed={line === "all"}
-              onClick={() => setLine("all")}
-            >
-              Todas <span className="text-xs opacity-75">{kits.length}</span>
-            </Button>
-            {PRIORITY_PRODUCT_LINES.map((item) => {
-              const selected = line === item;
-              const count = lineCounts.get(normalizeInventoryText(item)) ?? 0;
-              return (
+            <div className="flex flex-col gap-3 border-b bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+                  <Sparkles className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 id="kit-combination-title" className="font-display text-lg font-bold uppercase">
+                    Explora tu combinación
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Elige la moto y luego refina solo lo que necesites.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <Badge variant="secondary" className="min-h-8 rounded-full px-3 tabular-nums">
+                  {visibleKits.length} {visibleKits.length === 1 ? "resultado" : "resultados"}
+                </Badge>
+                {hasActiveSelection ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-11 rounded-full"
+                    onClick={resetSelection}
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    Ver todo
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                <span className="grid size-6 place-items-center rounded-full bg-primary text-primary-foreground">1</span>
+                Elige la familia
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7" role="group" aria-label="Elegir familia de moto">
                 <Button
-                  key={item}
                   type="button"
-                  size="sm"
-                  variant={selected ? "default" : "outline"}
-                  className="min-h-11 rounded-full px-4"
-                  aria-pressed={selected}
-                  onClick={() => setLine(item)}
+                  variant={family === "all" ? "default" : "outline"}
+                  className="h-auto min-h-14 justify-between rounded-xl px-3"
+                  aria-pressed={family === "all"}
+                  onClick={() => {
+                    setFamily("all");
+                    setModel("all");
+                    setColor("all");
+                    setHeadlight("all");
+                  }}
                 >
-                  {item} <span className="text-xs opacity-75">{count}</span>
+                  Todas <span className="text-xs opacity-75">{kits.length}</span>
                 </Button>
-              );
-            })}
-          </div>
+                {PLASTIC_KIT_FAMILIES.map((item) => {
+                  const count = familyCounts.get(item.id) ?? 0;
+                  const selected = family === item.id;
+                  return (
+                    <Button
+                      key={item.id}
+                      type="button"
+                      variant={selected ? "default" : "outline"}
+                      className="h-auto min-h-14 justify-between rounded-xl px-3"
+                      aria-pressed={selected}
+                      aria-label={`${item.label}: ${count} kits`}
+                      onClick={() => {
+                        setFamily(item.id);
+                        setModel("all");
+                        setColor("all");
+                        setHeadlight("all");
+                      }}
+                    >
+                      {item.label} <span className="text-xs opacity-75">{count}</span>
+                    </Button>
+                  );
+                })}
+              </div>
+
+              {selectedFamily?.models.length ? (
+                <div className="rounded-xl border bg-background/70 p-3">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="mr-2 inline-grid size-6 place-items-center rounded-full bg-primary text-primary-foreground">2</span>
+                    Ahora elige el modelo de {selectedFamily.label}
+                  </p>
+                  <div className="flex flex-wrap gap-2" role="group" aria-label={`Elegir modelo de ${selectedFamily.label}`}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={model === "all" ? "default" : "outline"}
+                      className="min-h-11 rounded-full"
+                      aria-pressed={model === "all"}
+                      onClick={() => setModel("all")}
+                    >
+                      Todos los {selectedFamily.label}
+                    </Button>
+                    {selectedFamily.models.map((item) => {
+                      const key = normalizeInventoryText(item);
+                      const count = modelCounts.get(key) ?? 0;
+                      return (
+                        <Button
+                          key={item}
+                          type="button"
+                          size="sm"
+                          variant={model === key ? "default" : "outline"}
+                          className="min-h-11 rounded-full"
+                          aria-pressed={model === key}
+                          onClick={() => {
+                            setModel(key);
+                            setColor("all");
+                            setHeadlight("all");
+                          }}
+                        >
+                          {item} <span className="text-xs opacity-70">{count}</span>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 rounded-xl border bg-background/70 p-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
+                <div className="flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground">
+                  <SlidersHorizontal className="size-4" aria-hidden="true" />
+                  Afinar
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <label htmlFor="kit-color-filter" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Color</label>
+                  <Select value={color} onValueChange={setColor}>
+                    <SelectTrigger id="kit-color-filter" aria-label="Filtrar por color">
+                      <SelectValue>
+                        {color === "all"
+                          ? "Todos los colores"
+                          : colorOptions.find(([key]) => key === color)?.[1].label ?? color}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los colores</SelectItem>
+                      {colorOptions.map(([key, option]) => (
+                        <SelectItem key={key} value={key}>{option.label} ({option.count})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <label htmlFor="kit-headlight-filter" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Farola</label>
+                  <Select value={headlight} onValueChange={(value: HeadlightChoice) => setHeadlight(value)}>
+                    <SelectTrigger id="kit-headlight-filter" aria-label="Filtrar por presentación de farola">
+                      <SelectValue>
+                        {{
+                          all: "Todas las presentaciones",
+                          with: "Con farola",
+                          without: "Sin farola",
+                          "not-applicable": "No aplica",
+                        }[headlight]}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las presentaciones</SelectItem>
+                      <SelectItem value="with">Con farola ({headlightCounts.withHeadlight})</SelectItem>
+                      <SelectItem value="without">Sin farola ({headlightCounts.withoutHeadlight})</SelectItem>
+                      <SelectItem value="not-applicable">No aplica ({headlightCounts.notApplicable})</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </section>
         </CardHeader>
         <CardContent>
           {visibleKits.length ? (
@@ -334,14 +567,17 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                     <div className="border-b px-4 pb-4 pt-5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <Badge variant="secondary" className="bg-background/55">{kitLine(kit)}</Badge>
+                          <Badge variant="secondary" className="bg-background/55">{getPlasticKitModel(kit)}</Badge>
                           <Badge variant="outline" className="gap-1.5 bg-background/45">
                             <span className="plastic-kit-color-dot" aria-hidden="true" />
                             {kit.color}
                           </Badge>
-                          <Badge variant="outline" className="bg-background/35">
-                            {kit.hasHeadlight ? "Con farola" : "Sin farola"}
-                          </Badge>
+                          {kit.hasHeadlight !== null &&
+                            plasticKitLineSupportsHeadlight(kit.model ?? kit.brand) && (
+                              <Badge variant="outline" className="bg-background/35">
+                                {kit.hasHeadlight ? "Con farola" : "Sin farola"}
+                              </Badge>
+                            )}
                         </div>
                         <div className="min-w-[5.75rem] shrink-0 rounded-xl border bg-background/45 px-3 py-2 text-right shadow-sm backdrop-blur-sm">
                           <p className="font-display text-3xl font-bold tabular-nums">{number.format(kit.available)}</p>
@@ -412,7 +648,7 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
             <div className="grid min-h-64 place-items-center rounded-xl border border-dashed p-8 text-center">
               <div className="max-w-md">
                 <Boxes className="mx-auto size-10 text-muted-foreground" aria-hidden="true" />
-                <p className="mt-4 font-semibold">{kits.length ? "No hay kits para este filtro" : "Crea tu primer kit plástico"}</p>
+                <p className="mt-4 font-semibold">{kits.length ? "No hay kits para esta combinación" : "Crea tu primer kit plástico"}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {kits.length
                     ? "Prueba otra búsqueda o selecciona todas las líneas."

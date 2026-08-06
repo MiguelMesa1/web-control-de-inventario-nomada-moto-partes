@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
+import { normalizePlasticKitHeadlight } from "@/lib/inventory/plastic-kit-headlight";
 import { requireJsonRequest, requireSameOrigin } from "@/lib/security/request";
 
 type KitPartInput = {
@@ -14,7 +15,7 @@ type KitInput = {
   name?: string;
   brand?: string;
   color?: string;
-  hasHeadlight?: boolean;
+  hasHeadlight?: boolean | null;
   model?: string;
   warehouse?: string;
   active?: boolean;
@@ -32,8 +33,8 @@ function messageFrom(error: unknown) {
   if (/same part|unique|duplicate/i.test(message)) {
     return "Una pieza no puede aparecer dos veces en el mismo kit.";
   }
-  if (/at least two parts/i.test(message)) {
-    return "Agrega al menos dos piezas para crear el kit.";
+  if (/at least (?:one|two) parts/i.test(message)) {
+    return "Agrega al menos una pieza para crear el kit.";
   }
   return message;
 }
@@ -59,14 +60,14 @@ function validateKit(body: KitInput) {
   if (!name || !brand || !color || !warehouse) {
     return "Completa nombre, marca, color y bodega.";
   }
-  if (typeof body.hasHeadlight !== "boolean") {
-    return "Selecciona si el kit es con farola o sin farola.";
+  if (body.hasHeadlight !== null && typeof body.hasHeadlight !== "boolean") {
+    return "Indica si el kit maneja farola y selecciona su presentación.";
   }
   if ([name, brand, color, warehouse, body.model ?? ""].some((value) => value.length > 120)) {
     return "Los datos del kit no pueden superar 120 caracteres.";
   }
-  if (parts.length < 2 || parts.length > 100) {
-    return "Cada kit debe tener entre 2 y 100 piezas.";
+  if (parts.length < 1 || parts.length > 100) {
+    return "Cada kit debe tener entre 1 y 100 piezas.";
   }
   const normalizedSkus = new Set<string>();
   for (const part of parts) {
@@ -106,7 +107,10 @@ export async function POST(request: Request) {
     p_name: body.name!.trim(),
     p_brand: body.brand!.trim(),
     p_color: body.color!.trim(),
-    p_has_headlight: body.hasHeadlight,
+    p_has_headlight: normalizePlasticKitHeadlight(
+      body.model?.trim() || body.brand!.trim(),
+      body.hasHeadlight ?? null,
+    ),
     p_model: body.model?.trim() || null,
     p_warehouse: body.warehouse!.trim(),
     p_active: body.active ?? true,

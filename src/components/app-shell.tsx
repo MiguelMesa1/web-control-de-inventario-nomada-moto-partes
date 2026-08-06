@@ -22,6 +22,7 @@ import { useState, useTransition } from "react";
 import { signOutAction } from "@/app/(auth)/login/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { ReorderNotifications } from "@/components/reorder-notifications";
+import { SessionActivityGuard } from "@/components/session-activity-guard";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -175,6 +176,7 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-background">
+      <SessionActivityGuard enabled={!isDemo} />
       <aside className="racing-grid fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card/95 p-5 shadow-[8px_0_30px_hsl(var(--foreground)/0.025)] backdrop-blur xl:flex xl:flex-col">
         <BrandMark />
         <div className="mt-9 flex-1 overflow-y-auto pr-1">
