@@ -203,12 +203,12 @@ export function AppShell({
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[19rem]">
-                <SheetHeader>
+                <SheetHeader className="min-h-11 pr-14">
                   <SheetTitle className="sr-only">Navegación</SheetTitle>
                   <SheetDescription className="sr-only">
                     Accesos principales del portal
                   </SheetDescription>
-                  <BrandMark />
+                  <BrandMark className="h-14 max-w-[11rem]" />
                 </SheetHeader>
                 <Navigation
                   profile={profile}

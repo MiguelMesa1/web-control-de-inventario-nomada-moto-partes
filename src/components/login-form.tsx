@@ -22,7 +22,7 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-4 sm:gap-5">
       {state.error && (
         <Alert variant="destructive" role="alert">
           <LockKeyhole aria-hidden="true" />
@@ -46,7 +46,7 @@ export function LoginForm() {
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
             placeholder="tu@nomadamotopartes.co"
-            className="h-11 pl-10"
+            className="h-12 pl-10"
             required
           />
         </div>
@@ -64,14 +64,14 @@ export function LoginForm() {
             name="password"
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
-            className="h-11 px-10"
+            className="h-12 px-10"
             required
           />
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute right-1 top-1/2 -translate-y-1/2"
+            className="absolute right-0.5 top-1/2 -translate-y-1/2"
             aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
             onClick={() => setShowPassword((value) => !value)}
           >
@@ -84,7 +84,7 @@ export function LoginForm() {
         type="submit"
         size="lg"
         disabled={pending}
-        className="h-11 shadow-[0_5px_16px_rgba(240,227,0,0.2)] transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:bg-primary/90 hover:shadow-[0_8px_22px_rgba(240,227,0,0.3)] active:translate-y-0 disabled:shadow-none"
+        className="h-12 shadow-[0_5px_16px_rgba(240,227,0,0.2)] transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:bg-primary/90 hover:shadow-[0_8px_22px_rgba(240,227,0,0.3)] active:translate-y-0 disabled:shadow-none"
       >
         {pending && <LoaderCircle data-icon="inline-start" className="animate-spin" />}
         {pending ? "Iniciando sesión…" : "Iniciar sesión"}

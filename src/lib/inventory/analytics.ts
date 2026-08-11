@@ -110,6 +110,50 @@ export function summarizeNegativeMovementsByLine(
     .sort((a, b) => b.unitsOut - a.unitsOut);
 }
 
+export function buildInventoryTrend(
+  history: InventoryHistoryPoint[],
+  current: InventoryItem[],
+  productLines?: readonly string[],
+) {
+  const includedLines = productLines ? new Set(productLines) : null;
+  const includesLine = (line: string) =>
+    includedLines === null || includedLines.has(line);
+  const grouped = new Map<
+    string,
+    { snapshotId: string; date: string; available: number }
+  >();
+
+  for (const point of history) {
+    if (!includesLine(point.productLine)) continue;
+    const entry = grouped.get(point.snapshotId) ?? {
+      snapshotId: point.snapshotId,
+      date: point.date,
+      available: 0,
+    };
+    entry.available += point.available;
+    if (point.date > entry.date) entry.date = point.date;
+    grouped.set(point.snapshotId, entry);
+  }
+
+  const currentDate = current[0]?.sourceExportedAt;
+  if (currentDate) {
+    const currentSnapshotId =
+      current.find((item) => item.snapshotId)?.snapshotId ??
+      `current:${currentDate}`;
+    grouped.set(currentSnapshotId, {
+      snapshotId: currentSnapshotId,
+      date: currentDate,
+      available: current
+        .filter((item) => includesLine(item.productLine))
+        .reduce((sum, item) => sum + item.available, 0),
+    });
+  }
+
+  return [...grouped.values()].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+}
+
 export function buildLineTrend(
   history: InventoryHistoryPoint[],
   days: number,

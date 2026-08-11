@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateLineMetrics,
+  buildInventoryTrend,
   calculateProductMovements,
   inventorySummary,
   summarizeNegativeMovementsByLine,
 } from "@/lib/inventory/analytics";
-import type { InventoryItem } from "@/types/inventory";
+import type { InventoryHistoryPoint, InventoryItem } from "@/types/inventory";
 
 const item = (
   sku: string,
@@ -100,5 +101,43 @@ describe("inventory analytics", () => {
       lowStock: 1,
       lines: 2,
     });
+  });
+
+  it("builds a chronological inventory trend and respects selected lines", () => {
+    const history: InventoryHistoryPoint[] = [
+      {
+        date: "2026-07-01T12:00:00.000Z",
+        snapshotId: "first",
+        productLine: "Motor",
+        warehouse: "Principal",
+        sku: "A",
+        available: 10,
+      },
+      {
+        date: "2026-07-01T12:00:00.000Z",
+        snapshotId: "first",
+        productLine: "Frenos",
+        warehouse: "Principal",
+        sku: "B",
+        available: 8,
+      },
+    ];
+    const current = [
+      { ...item("A", "Motor", "Principal", 7), snapshotId: "current" },
+      { ...item("B", "Frenos", "Principal", 12), snapshotId: "current" },
+    ];
+
+    expect(buildInventoryTrend(history, current, ["Motor"])).toEqual([
+      {
+        snapshotId: "first",
+        date: "2026-07-01T12:00:00.000Z",
+        available: 10,
+      },
+      {
+        snapshotId: "current",
+        date: "2026-07-29T12:00:00.000Z",
+        available: 7,
+      },
+    ]);
   });
 });
