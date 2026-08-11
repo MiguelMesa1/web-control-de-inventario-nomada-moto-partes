@@ -62,6 +62,30 @@ export interface ProductMovement {
   changePercent: number;
 }
 
+export interface ProductHistorySubject {
+  sku: string;
+  productName: string;
+  productLine: string;
+  warehouse: string;
+  available: number;
+}
+
+export interface ProductHistoryEvent {
+  snapshotId: string;
+  filename: string;
+  date: string;
+  previousAvailable: number | null;
+  available: number;
+  change: number | null;
+  kind: "initial" | "increase" | "decrease";
+}
+
+export interface ProductHistoryPayload {
+  events: ProductHistoryEvent[];
+  changes: number;
+  netChange: number;
+}
+
 export interface ImportRun {
   id: string;
   filename: string;

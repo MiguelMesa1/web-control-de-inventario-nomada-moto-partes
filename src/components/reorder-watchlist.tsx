@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  History,
   LoaderCircle,
   PackagePlus,
   Pencil,
@@ -16,6 +17,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
+import { ProductHistorySheet } from "@/components/product-history-sheet";
 import { useInventoryData } from "@/components/providers/inventory-provider";
 import { useProfile } from "@/components/providers/profile-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -58,7 +60,11 @@ import {
   PRIORITY_PRODUCT_LINES,
 } from "@/lib/inventory/priority-lines";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
-import type { ReorderAlertRow, ReorderWatchItem } from "@/types/inventory";
+import type {
+  ProductHistorySubject,
+  ReorderAlertRow,
+  ReorderWatchItem,
+} from "@/types/inventory";
 
 const number = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 
@@ -109,11 +115,30 @@ export function ReorderWatchlist() {
   const [lineRule, setLineRule] = useState("");
   const [linePoint, setLinePoint] = useState("10");
   const [savingLine, setSavingLine] = useState(false);
+  const [historyItem, setHistoryItem] =
+    useState<ProductHistorySubject | null>(null);
   const deferredQuery = useDeferredValue(query);
   const productLines = useMemo(
     () => [...new Set(current.map((item) => item.productLine))].sort((a, b) => a.localeCompare(b, "es")),
     [current],
   );
+  const historySubjects = useMemo(() => {
+    const subjects = new Map<string, ProductHistorySubject>();
+
+    for (const item of current) {
+      const existing = subjects.get(item.sku);
+      const isPrincipal =
+        normalizeInventoryText(item.warehouse) === "principal";
+      const existingIsPrincipal =
+        existing && normalizeInventoryText(existing.warehouse) === "principal";
+
+      if (!existing || (isPrincipal && !existingIsPrincipal)) {
+        subjects.set(item.sku, item);
+      }
+    }
+
+    return subjects;
+  }, [current]);
 
   const rows = useMemo(
     () =>
@@ -441,8 +466,23 @@ export function ReorderWatchlist() {
               <TableBody>
                 {pageRows.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="font-mono text-xs font-bold">
-                      {row.sku}
+                    <TableCell>
+                      {historySubjects.has(row.sku) ? (
+                        <button
+                          type="button"
+                          className="min-h-11 rounded-lg px-2 font-mono text-xs font-bold text-foreground underline decoration-primary/45 underline-offset-4 transition-colors hover:bg-primary/10 hover:decoration-primary"
+                          onClick={() =>
+                            setHistoryItem(historySubjects.get(row.sku) ?? null)
+                          }
+                          aria-label={`Ver historial de ${row.sku}, ${row.productName}`}
+                        >
+                          {row.sku}
+                        </button>
+                      ) : (
+                        <span className="font-mono text-xs font-bold">
+                          {row.sku}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-sm font-medium">
                       {row.productName}
@@ -492,7 +532,20 @@ export function ReorderWatchlist() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-mono text-xs font-bold">{row.sku}</p>
+                      {historySubjects.has(row.sku) ? (
+                        <button
+                          type="button"
+                          className="min-h-11 rounded-lg px-2 font-mono text-xs font-bold text-foreground underline decoration-primary/45 underline-offset-4 transition-colors hover:bg-primary/10 hover:decoration-primary"
+                          onClick={() =>
+                            setHistoryItem(historySubjects.get(row.sku) ?? null)
+                          }
+                          aria-label={`Ver historial de ${row.sku}, ${row.productName}`}
+                        >
+                          {row.sku}
+                        </button>
+                      ) : (
+                        <p className="font-mono text-xs font-bold">{row.sku}</p>
+                      )}
                       <h3 className="mt-1 font-semibold">{row.productName}</h3>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {row.productLine ?? "Sin línea"}
@@ -512,6 +565,18 @@ export function ReorderWatchlist() {
                       <p className="font-bold">{number.format(row.reorderPoint)}</p>
                     </div>
                   </div>
+                  {historySubjects.has(row.sku) && (
+                    <Button
+                      variant="outline"
+                      className="mt-3 min-h-11 w-full"
+                      onClick={() =>
+                        setHistoryItem(historySubjects.get(row.sku) ?? null)
+                      }
+                    >
+                      <History data-icon="inline-start" />
+                      Movimientos
+                    </Button>
+                  )}
                   {isAdmin && (
                     <div className="mt-3 flex gap-2">
                       <Button variant="outline" className="flex-1" onClick={() => openEdit(row)}>
@@ -669,6 +734,14 @@ export function ReorderWatchlist() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ProductHistorySheet
+        item={historyItem}
+        open={Boolean(historyItem)}
+        onOpenChange={(open) => {
+          if (!open) setHistoryItem(null);
+        }}
+      />
     </div>
   );
 }

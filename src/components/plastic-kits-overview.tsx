@@ -5,6 +5,7 @@ import {
   ChevronDown,
   CircleAlert,
   Copy,
+  LayoutGrid,
   Layers3,
   LoaderCircle,
   PackageCheck,
@@ -15,6 +16,7 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  TableProperties,
   Trash2,
   Warehouse,
 } from "lucide-react";
@@ -22,6 +24,7 @@ import dynamic from "next/dynamic";
 import { type CSSProperties, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
+import { PlasticKitsMatrix } from "@/components/plastic-kits-matrix";
 import { useInventoryData } from "@/components/providers/inventory-provider";
 import { useProfile } from "@/components/providers/profile-provider";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +39,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -353,7 +362,8 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
       </section>
 
       <Card>
-        <CardHeader className="gap-4">
+        <Tabs defaultValue="cards">
+          <CardHeader className="gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <CardTitle className="font-display text-2xl uppercase">Kits configurados</CardTitle>
@@ -361,8 +371,16 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                 El resultado cambia automáticamente después de cada nueva carga de inventario.
               </p>
             </div>
-            <div className="w-full lg:w-80">
-              <div className="relative">
+            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-center">
+              <TabsList className="grid w-full grid-cols-2 sm:w-auto [&_svg]:size-4">
+                <TabsTrigger value="cards">
+                  <LayoutGrid aria-hidden="true" /> Tarjetas
+                </TabsTrigger>
+                <TabsTrigger value="matrix">
+                  <TableProperties aria-hidden="true" /> Matriz
+                </TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:flex-1 lg:w-80">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                 <Input
                   value={query}
@@ -544,8 +562,9 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
               </div>
             </div>
           </section>
-        </CardHeader>
-        <CardContent>
+          </CardHeader>
+          <TabsContent value="cards" className="mt-0">
+            <CardContent>
           {visibleKits.length ? (
             <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
               {visibleKits.map((kit) => {
@@ -658,7 +677,35 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
               </div>
             </div>
           )}
-        </CardContent>
+            </CardContent>
+          </TabsContent>
+          <TabsContent value="matrix" className="mt-0">
+            <CardContent>
+              {visibleKits.length ? (
+                <PlasticKitsMatrix
+                  kits={visibleKits}
+                  lowStockThreshold={lowStockThreshold}
+                  onOpenKit={isAdmin ? openEdit : undefined}
+                />
+              ) : (
+                <div className="grid min-h-64 place-items-center rounded-xl border border-dashed p-8 text-center">
+                  <div className="max-w-md">
+                    <TableProperties
+                      className="mx-auto size-10 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <p className="mt-4 font-semibold">
+                      No hay kits para construir la matriz
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Prueba otra búsqueda o usa “Ver todo” para recuperar todas las combinaciones.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </TabsContent>
+        </Tabs>
       </Card>
 
       {dialogOpen ? (

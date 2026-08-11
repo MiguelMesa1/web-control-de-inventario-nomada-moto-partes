@@ -4,12 +4,14 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  History,
   PackageOpen,
   Paperclip,
   Search,
 } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { ProductDocumentsDialog } from "@/components/product-documents-dialog";
+import { ProductHistorySheet } from "@/components/product-history-sheet";
 import { useProfile } from "@/components/providers/profile-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,7 +77,8 @@ export function InventoryTable({
   const [descending, setDescending] = useState(false);
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [documentItem, setDocumentItem] = useState<InventoryItem | null>(null);
+  const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const deferredQuery = useDeferredValue(query);
 
   const lines = useMemo(
@@ -152,7 +155,7 @@ export function InventoryTable({
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-4 pt-4 sm:p-4 sm:pt-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_repeat(3,0.7fr)]">
             <div className="relative">
               <Search
@@ -263,7 +266,6 @@ export function InventoryTable({
                 </Button>
               </TableHead>
               <TableHead className="text-right">Existencia</TableHead>
-              <TableHead className="text-right">Reservado</TableHead>
               <TableHead className="text-right">
                 <Button
                   variant="ghost"
@@ -283,8 +285,15 @@ export function InventoryTable({
           <TableBody>
             {pageItems.map((item) => (
               <TableRow key={`${item.sku}-${item.warehouse}`}>
-                <TableCell className="font-mono text-xs font-bold">
-                  {item.sku}
+                <TableCell>
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-lg px-2 font-mono text-xs font-bold text-foreground underline decoration-primary/45 underline-offset-4 transition-colors hover:bg-primary/10 hover:decoration-primary"
+                    onClick={() => setHistoryItem(item)}
+                    aria-label={`Ver historial de ${item.sku}, ${item.productName}`}
+                  >
+                    {item.sku}
+                  </button>
                 </TableCell>
                 <TableCell className="max-w-64 font-medium">
                   {item.productName}
@@ -292,9 +301,6 @@ export function InventoryTable({
                 <TableCell>{item.productLine}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   {number.format(item.stock)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {number.format(item.reserved)}
                 </TableCell>
                 <TableCell className="text-right font-bold tabular-nums">
                   {number.format(item.available)}
@@ -311,7 +317,7 @@ export function InventoryTable({
                       variant="ghost"
                       size="icon"
                       aria-label={`Documentos de ${item.productName}`}
-                      onClick={() => setSelectedItem(item)}
+                      onClick={() => setDocumentItem(item)}
                     >
                       <Paperclip />
                     </Button>
@@ -342,21 +348,13 @@ export function InventoryTable({
                   threshold={lowStockThreshold}
                 />
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-muted/45 p-3 text-center">
+              <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-muted/45 p-3 text-center">
                 <div>
                   <p className="text-[0.68rem] uppercase text-muted-foreground">
                     Existencia
                   </p>
                   <p className="mt-1 font-bold tabular-nums">
                     {number.format(item.stock)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[0.68rem] uppercase text-muted-foreground">
-                    Reservado
-                  </p>
-                  <p className="mt-1 font-bold tabular-nums">
-                    {number.format(item.reserved)}
                   </p>
                 </div>
                 <div>
@@ -368,16 +366,26 @@ export function InventoryTable({
                   </p>
                 </div>
               </div>
-              {canManageDocuments && (
+              <div className={`mt-3 grid gap-2 ${canManageDocuments ? "grid-cols-2" : "grid-cols-1"}`}>
                 <Button
                   variant="outline"
-                  className="mt-3 w-full"
-                  onClick={() => setSelectedItem(item)}
+                  className="min-h-11"
+                  onClick={() => setHistoryItem(item)}
                 >
-                  <Paperclip data-icon="inline-start" />
-                  Ver documentos
+                  <History data-icon="inline-start" />
+                  Movimientos
                 </Button>
-              )}
+                {canManageDocuments ? (
+                  <Button
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={() => setDocumentItem(item)}
+                  >
+                    <Paperclip data-icon="inline-start" />
+                    Documentos
+                  </Button>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -428,10 +436,17 @@ export function InventoryTable({
       </div>
 
       <ProductDocumentsDialog
-        item={selectedItem}
-        open={Boolean(selectedItem)}
+        item={documentItem}
+        open={Boolean(documentItem)}
         onOpenChange={(open) => {
-          if (!open) setSelectedItem(null);
+          if (!open) setDocumentItem(null);
+        }}
+      />
+      <ProductHistorySheet
+        item={historyItem}
+        open={Boolean(historyItem)}
+        onOpenChange={(open) => {
+          if (!open) setHistoryItem(null);
         }}
       />
     </div>

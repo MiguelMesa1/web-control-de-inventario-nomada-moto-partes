@@ -20,16 +20,23 @@ export function BrandMark({
         className={cn(
           "relative size-11 shrink-0 overflow-hidden rounded-xl shadow-[0_0_24px_rgba(240,227,0,0.22)]",
           !transparent && "bg-black",
+          className,
         )}
         aria-label="Nómada Moto Partes"
+        role="img"
       >
         <Image
           src="/brand/nomada-elephant.png"
           alt=""
-          fill
+          width={5016}
+          height={1623}
           priority
-          sizes="44px"
-        className={cn("scale-[3.05] object-contain", transparent && "mix-blend-screen")}
+          unoptimized
+          sizes="144px"
+          className={cn(
+            "absolute -left-[2.8rem] -top-px h-auto w-36 max-w-none",
+            transparent && "mix-blend-screen",
+          )}
         />
       </div>
     );
@@ -43,6 +50,7 @@ export function BrandMark({
         className,
       )}
       aria-label="Nómada Moto Partes"
+      role="img"
     >
       <Image
         src={source}

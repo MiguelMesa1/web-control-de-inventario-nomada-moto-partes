@@ -19,7 +19,6 @@ export function InventoryPageClient() {
       "Producto",
       "Línea",
       "Existencia",
-      "Reservado",
       "Disponible",
       "Fecha",
     ];
@@ -34,7 +33,6 @@ export function InventoryPageClient() {
         item.productName,
         item.productLine,
         item.stock,
-        item.reserved,
         item.available,
         item.sourceExportedAt.slice(0, 10),
       ]
