@@ -50,7 +50,7 @@ const mainNavigation = [
   { href: "/dashboard", label: "Inicio", icon: Gauge },
   { href: "/inventory", label: "Inventario", icon: Boxes },
   { href: "/plastic-kits", label: "Kit Plástico", icon: PackageOpen },
-  { href: "/reorder", label: "Punto de Reorden", icon: ShoppingCart },
+  { href: "/reorder", label: "Recompra", icon: ShoppingCart },
   { href: "/orders", label: "Pedidos", icon: ClipboardList },
   { href: "/lines", label: "Líneas principales", icon: BarChart3 },
   { href: "/analytics", label: "Analítica", icon: ClipboardClock },

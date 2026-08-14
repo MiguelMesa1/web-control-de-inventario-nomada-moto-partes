@@ -15,7 +15,6 @@ export default async function SettingsPage() {
   return (
     <SettingsPanel
       initialLowStockThreshold={settings.lowStockThreshold}
-      initialLineSettings={settings.reorderLineSettings}
       initialEmailAttempts={emailAttempts}
       isDemo={settings.isDemo}
     />

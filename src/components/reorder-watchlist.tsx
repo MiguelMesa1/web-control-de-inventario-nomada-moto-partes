@@ -12,9 +12,11 @@ import {
   Search,
   ShoppingCart,
   Trash2,
+  Truck,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { ProductHistorySheet } from "@/components/product-history-sheet";
@@ -26,6 +28,8 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -37,11 +41,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -54,25 +65,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  isPriorityProductLine,
-  normalizeInventoryText,
-  PRIORITY_PRODUCT_LINES,
-} from "@/lib/inventory/priority-lines";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
+import { normalizeInventoryText } from "@/lib/inventory/priority-lines";
 import type {
   ProductHistorySubject,
   ReorderAlertRow,
   ReorderWatchItem,
 } from "@/types/inventory";
 
-const number = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
+const number = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 });
 
 type FormState = {
   sourceId: string;
   sku: string;
   productName: string;
-  reorderPoint: string;
+  primarySupplier: string;
+  secondarySupplier: string;
+  minimumStock: string;
+  maximumStock: string;
   notes: string;
 };
 
@@ -80,118 +90,136 @@ const emptyForm: FormState = {
   sourceId: "",
   sku: "",
   productName: "",
-  reorderPoint: "10",
+  primarySupplier: "",
+  secondarySupplier: "",
+  minimumStock: "10",
+  maximumStock: "20",
   notes: "",
 };
 
 function statusBadge(row: ReorderAlertRow) {
-  if (row.status === "missing") {
-    return <Badge variant="outline">Sin registro</Badge>;
-  }
-  if (row.status === "exhausted") {
-    return <Badge variant="destructive">Agotado</Badge>;
-  }
-  if (row.status === "reorder") {
-    return <Badge className="bg-primary text-primary-foreground">Por solicitar</Badge>;
-  }
+  if (row.status === "missing") return <Badge variant="outline">Sin registro</Badge>;
+  if (row.status === "exhausted") return <Badge variant="destructive">Agotado</Badge>;
+  if (row.status === "low") return <Badge>Por reponer</Badge>;
   return <Badge variant="secondary">Nivel estable</Badge>;
+}
+
+function ReplenishmentLevels({ row }: { row: ReorderAlertRow }) {
+  return (
+    <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/45 p-3 text-center">
+      <div>
+        <p className="text-xs text-muted-foreground">Disponible</p>
+        <p className="font-bold tabular-nums">
+          {row.hasInventoryRecord ? number.format(row.available) : "—"}
+        </p>
+      </div>
+      <div>
+        <p className="text-xs text-muted-foreground">Mínimo</p>
+        <p className="font-bold tabular-nums">{number.format(row.minimumStock)}</p>
+      </div>
+      <div>
+        <p className="text-xs text-muted-foreground">Máximo</p>
+        <p className="font-bold tabular-nums">{number.format(row.maximumStock)}</p>
+      </div>
+    </div>
+  );
 }
 
 export function ReorderWatchlist() {
   const router = useRouter();
-  const { current, reorderWatchlist, reorderLineSettings, isDemo } = useInventoryData();
+  const { current, reorderWatchlist, isDemo } = useInventoryData();
   const profile = useProfile();
   const isAdmin = profile.role === "admin";
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("attention");
-  const [line, setLine] = useState("priority");
-  const [pageSize, setPageSize] = useState(50);
+  const [supplier, setSupplier] = useState("all");
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ReorderWatchItem | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const [lineRule, setLineRule] = useState("");
-  const [linePoint, setLinePoint] = useState("10");
-  const [savingLine, setSavingLine] = useState(false);
-  const [historyItem, setHistoryItem] =
-    useState<ProductHistorySubject | null>(null);
+  const [historyItem, setHistoryItem] = useState<ProductHistorySubject | null>(null);
   const deferredQuery = useDeferredValue(query);
-  const productLines = useMemo(
-    () => [...new Set(current.map((item) => item.productLine))].sort((a, b) => a.localeCompare(b, "es")),
-    [current],
-  );
-  const historySubjects = useMemo(() => {
-    const subjects = new Map<string, ProductHistorySubject>();
-
-    for (const item of current) {
-      const existing = subjects.get(item.sku);
-      const isPrincipal =
-        normalizeInventoryText(item.warehouse) === "principal";
-      const existingIsPrincipal =
-        existing && normalizeInventoryText(existing.warehouse) === "principal";
-
-      if (!existing || (isPrincipal && !existingIsPrincipal)) {
-        subjects.set(item.sku, item);
-      }
-    }
-
-    return subjects;
-  }, [current]);
+  const pageSize = 40;
 
   const rows = useMemo(
     () =>
       buildReorderAlertRows(
         reorderWatchlist.filter((item) => item.active),
         current,
-        reorderLineSettings,
-      ).sort((a, b) => {
-        return (
-          (a.hasInventoryRecord ? 0 : 1) -
-            (b.hasInventoryRecord ? 0 : 1) ||
+      ).sort(
+        (a, b) =>
+          (a.status === "healthy" ? 1 : 0) - (b.status === "healthy" ? 1 : 0) ||
           a.available - b.available ||
-          a.productName.localeCompare(b.productName, "es")
-        );
-      }),
-    [current, reorderLineSettings, reorderWatchlist],
+          a.productName.localeCompare(b.productName, "es"),
+      ),
+    [current, reorderWatchlist],
   );
 
+  const supplierOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          reorderWatchlist.flatMap((item) =>
+            [item.primarySupplier, item.secondarySupplier].filter(
+              (value): value is string => Boolean(value),
+            ),
+          ),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "es")),
+    [reorderWatchlist],
+  );
+
+  const historySubjects = useMemo(() => {
+    const subjects = new Map<string, ProductHistorySubject>();
+    for (const item of current) {
+      const existing = subjects.get(item.sku);
+      const isPrincipal = normalizeInventoryText(item.warehouse) === "principal";
+      const existingIsPrincipal =
+        existing && normalizeInventoryText(existing.warehouse) === "principal";
+      if (!existing || (isPrincipal && !existingIsPrincipal)) {
+        subjects.set(item.sku, item);
+      }
+    }
+    return subjects;
+  }, [current]);
+
   const filtered = useMemo(() => {
-    const normalized = deferredQuery.trim().toLowerCase();
+    const normalized = normalizeInventoryText(deferredQuery);
     return rows.filter((row) => {
       const matchesQuery =
         !normalized ||
-        row.sku.toLowerCase().includes(normalized) ||
-        row.productName.toLowerCase().includes(normalized);
+        normalizeInventoryText(row.sku).includes(normalized) ||
+        normalizeInventoryText(row.productName).includes(normalized);
       const matchesStatus =
         status === "all" ||
         (status === "attention" && row.status !== "healthy") ||
         row.status === status;
-      const matchesLine =
-        line === "all" ||
-        (line === "priority" &&
-          Boolean(row.productLine && isPriorityProductLine(row.productLine))) ||
-        normalizeInventoryText(row.productLine ?? "") ===
-          normalizeInventoryText(line);
-      return matchesQuery && matchesStatus && matchesLine;
+      const matchesSupplier =
+        supplier === "all" ||
+        row.primarySupplier === supplier ||
+        row.secondarySupplier === supplier;
+      return matchesQuery && matchesStatus && matchesSupplier;
     });
-  }, [deferredQuery, line, rows, status]);
+  }, [deferredQuery, rows, status, supplier]);
+
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const firstVisible = filtered.length ? (safePage - 1) * pageSize + 1 : 0;
   const lastVisible = Math.min(safePage * pageSize, filtered.length);
-  const pageRows = filtered.slice(
-    (safePage - 1) * pageSize,
-    safePage * pageSize,
-  );
-
   const metrics = {
     monitored: rows.length,
     attention: rows.filter((row) => row.status !== "healthy").length,
     exhausted: rows.filter((row) => row.status === "exhausted").length,
-    missing: rows.filter((row) => row.status === "missing").length,
+    suggested: rows.reduce(
+      (total, row) =>
+        row.status === "healthy" ? total : total + row.suggestedQuantity,
+      0,
+    ),
   };
+
   const inventoryOptions = useMemo(() => {
     const options = new Map<string, string>();
     for (const item of current) options.set(item.sku, item.productName);
@@ -210,7 +238,10 @@ export function ReorderWatchlist() {
       sourceId: item.sourceId?.toString() ?? "",
       sku: item.sku,
       productName: item.productName,
-      reorderPoint: item.reorderPoint.toString(),
+      primarySupplier: item.primarySupplier ?? "",
+      secondarySupplier: item.secondarySupplier ?? "",
+      minimumStock: item.minimumStock.toString(),
+      maximumStock: item.maximumStock.toString(),
       notes: item.notes ?? "",
     });
     setDialogOpen(true);
@@ -226,40 +257,52 @@ export function ReorderWatchlist() {
   }
 
   async function save() {
-    if (!form.sku.trim() || !form.productName.trim()) {
-      toast.error("Completa la referencia y el nombre del producto.");
+    const minimumStock = Number(form.minimumStock);
+    const maximumStock = Number(form.maximumStock);
+    if (!form.sku.trim() || !form.productName.trim() || !form.primarySupplier.trim()) {
+      toast.error("Completa la referencia, el producto y el proveedor principal.");
       return;
     }
+    if (
+      !Number.isInteger(minimumStock) ||
+      !Number.isInteger(maximumStock) ||
+      minimumStock < 0 ||
+      maximumStock < minimumStock
+    ) {
+      toast.error("El máximo debe ser un entero igual o mayor al mínimo.");
+      return;
+    }
+
     setSaving(true);
     try {
       if (!isDemo) {
         const response = await fetch("/api/reorder-watchlist", {
           method: editing ? "PATCH" : "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(
-            editing
-              ? {
-                  id: editing.id,
-                  reorderPoint: Number(form.reorderPoint),
-                  notes: form.notes,
-                  active: true,
-                }
+          body: JSON.stringify({
+            ...(editing
+              ? { id: editing.id }
               : {
                   sourceId: form.sourceId ? Number(form.sourceId) : undefined,
                   sku: form.sku,
                   productName: form.productName,
-                  reorderPoint: Number(form.reorderPoint),
-                  notes: form.notes,
-                },
-          ),
+                }),
+            primarySupplier: form.primarySupplier,
+            secondarySupplier: form.secondarySupplier,
+            minimumStock,
+            maximumStock,
+            notes: form.notes,
+            active: true,
+          }),
         });
         const body = (await response.json()) as { message?: string };
         if (!response.ok) throw new Error(body.message);
       }
-      toast.success(editing ? "Punto de reorden actualizado" : "Producto agregado", {
-        description: `${form.sku} se vigilará en ${form.reorderPoint} unidades.`,
+      toast.success(editing ? "Configuración actualizada" : "Producto agregado", {
+        description: `${form.sku}: mínimo ${minimumStock}, máximo ${maximumStock}.`,
       });
       setDialogOpen(false);
+      window.dispatchEvent(new Event("reorder-alerts:refresh"));
       router.refresh();
     } catch (error) {
       toast.error("No pudimos guardar el producto", {
@@ -271,7 +314,7 @@ export function ReorderWatchlist() {
   }
 
   async function remove(item: ReorderWatchItem) {
-    if (!window.confirm(`¿Retirar ${item.sku} del Punto de Reorden?`)) return;
+    if (!window.confirm(`¿Retirar ${item.sku} de la lista de recompra?`)) return;
     setRemovingId(item.id);
     try {
       if (!isDemo) {
@@ -282,7 +325,8 @@ export function ReorderWatchlist() {
         const body = (await response.json()) as { message?: string };
         if (!response.ok) throw new Error(body.message);
       }
-      toast.success("Producto retirado de la vigilancia");
+      toast.success("Producto retirado de la lista de recompra");
+      window.dispatchEvent(new Event("reorder-alerts:refresh"));
       router.refresh();
     } catch (error) {
       toast.error("No pudimos retirar el producto", {
@@ -293,105 +337,79 @@ export function ReorderWatchlist() {
     }
   }
 
-  async function saveLineRule() {
-    if (!lineRule) return;
-    setSavingLine(true);
-    try {
-      if (!isDemo) {
-        const response = await fetch("/api/reorder-line-settings", {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ productLine: lineRule, reorderPoint: Number(linePoint) }),
-        });
-        const body = (await response.json()) as { message?: string };
-        if (!response.ok) throw new Error(body.message);
-      }
-      toast.success("Punto por línea guardado", { description: `${lineRule}: ${linePoint} unidades.` });
-      window.dispatchEvent(new Event("reorder-alerts:refresh"));
-      router.refresh();
-    } catch (error) {
-      toast.error("No pudimos guardar la regla", { description: error instanceof Error ? error.message : "Intenta nuevamente." });
-    } finally {
-      setSavingLine(false);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Alertas de compra"
-        title="Punto de Reorden"
-        description="Productos ordenados de menor a mayor disponibilidad."
+        eyebrow="Abastecimiento"
+        title="Recompra"
+        description="Las alertas se activan al llegar al mínimo y la compra sugerida completa existencias hasta el máximo."
         icon={ShoppingCart}
+        action={
+          <Button asChild>
+            <Link href="/orders">
+              <Truck data-icon="inline-start" aria-hidden="true" />
+              Preparar pedidos
+            </Link>
+          </Button>
+        }
       />
 
-      {metrics.attention > 0 && (
+      {metrics.attention > 0 ? (
         <Alert className="border-primary/60 bg-primary/10">
-          <AlertTriangle />
-          <AlertTitle>{metrics.attention} productos por revisar</AlertTitle>
+          <AlertTriangle aria-hidden="true" />
+          <AlertTitle>{metrics.attention} productos necesitan revisión</AlertTitle>
           <AlertDescription>
-            La alerta aparece al llegar a 10 unidades o al punto configurado.
+            Para completar sus máximos se sugieren {number.format(metrics.suggested)} unidades.
           </AlertDescription>
         </Alert>
-      )}
+      ) : null}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen de recompra">
+        {[
+          ["Productos configurados", metrics.monitored],
+          ["Por revisar", metrics.attention],
+          ["Agotados", metrics.exhausted],
+          ["Unidades sugeridas", metrics.suggested],
+        ].map(([label, value]) => (
+          <Card key={label}>
+            <CardHeader>
+              <CardDescription>{label}</CardDescription>
+              <CardTitle className="font-display text-3xl tabular-nums">
+                {number.format(Number(value))}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        ))}
+      </section>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="font-display text-xl uppercase">Puntos por línea</CardTitle>
-          <p className="text-sm text-muted-foreground">Esta regla reemplaza el punto individual de los productos vigilados de la línea seleccionada.</p>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <Label htmlFor="reorder-line">Línea</Label>
-              <Select value={lineRule} onValueChange={(value) => {
-                setLineRule(value);
-                const existing = reorderLineSettings.find((setting) => setting.productLine === value);
-                setLinePoint(String(existing?.reorderPoint ?? 10));
-              }} disabled={!isAdmin}>
-                <SelectTrigger id="reorder-line"><SelectValue placeholder="Selecciona una línea" /></SelectTrigger>
-                <SelectContent>{productLines.map((productLine) => <SelectItem key={productLine} value={productLine}>{productLine}</SelectItem>)}</SelectContent>
-              </Select>
+        <CardHeader className="gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="font-display text-2xl uppercase">Productos de recompra</CardTitle>
+              <CardDescription className="mt-1">
+                Mínimos, máximos y proveedores configurados por referencia.
+              </CardDescription>
             </div>
-            <div className="w-full sm:w-40"><Label htmlFor="reorder-line-point">Punto</Label><Input id="reorder-line-point" type="number" min={0} value={linePoint} disabled={!isAdmin} onChange={(event) => setLinePoint(event.target.value)} /></div>
-            <Button onClick={saveLineRule} disabled={!isAdmin || !lineRule || savingLine}>{savingLine ? <LoaderCircle className="animate-spin" /> : null}Guardar línea</Button>
+            {isAdmin ? (
+              <Button variant="outline" onClick={openAdd}>
+                <PackagePlus data-icon="inline-start" aria-hidden="true" />
+                Agregar producto
+              </Button>
+            ) : null}
           </div>
-          {reorderLineSettings.length > 0 && <p className="text-sm text-muted-foreground">Reglas activas: {reorderLineSettings.map((setting) => `${setting.productLine} (${number.format(setting.reorderPoint)})`).join(" · ")}</p>}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <CardTitle className="font-display text-2xl uppercase">
-              Productos vigilados
-            </CardTitle>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge variant="secondary">{metrics.monitored} vigilados</Badge>
-              <Badge variant="destructive">{metrics.exhausted} agotados</Badge>
-              {metrics.missing > 0 && (
-                <Badge variant="outline">{metrics.missing} sin registro</Badge>
-              )}
-            </div>
-          </div>
-          {isAdmin && (
-            <Button onClick={openAdd}>
-              <PackagePlus /> Agregar producto
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_repeat(3,210px)]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem_14rem]">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
                 value={query}
                 onChange={(event) => {
                   setQuery(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Buscar por SKU o producto…"
+                placeholder="Buscar por producto o referencia…"
                 className="pl-10"
+                aria-label="Buscar productos de recompra"
               />
             </div>
             <Select
@@ -405,343 +423,238 @@ export function ReorderWatchlist() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="attention">Requieren atención</SelectItem>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="reorder">Por solicitar</SelectItem>
-                <SelectItem value="exhausted">Agotados</SelectItem>
-                <SelectItem value="missing">Sin registro</SelectItem>
-                <SelectItem value="healthy">Nivel estable</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="attention">Necesitan atención</SelectItem>
+                  <SelectItem value="low">Necesitan reposición</SelectItem>
+                  <SelectItem value="exhausted">Agotados</SelectItem>
+                  <SelectItem value="missing">Sin registro</SelectItem>
+                  <SelectItem value="healthy">Nivel estable</SelectItem>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
             <Select
-              value={line}
+              value={supplier}
               onValueChange={(value) => {
-                setLine(value);
+                setSupplier(value);
                 setPage(1);
               }}
             >
-              <SelectTrigger aria-label="Filtrar por línea">
-                <SelectValue />
+              <SelectTrigger aria-label="Filtrar por proveedor">
+                <SelectValue placeholder="Todos los proveedores" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="priority">Líneas principales</SelectItem>
-                {PRIORITY_PRODUCT_LINES.map((productLine) => (
-                  <SelectItem key={productLine} value={productLine}>
-                    {productLine}
-                  </SelectItem>
-                ))}
-                <SelectItem value="all">Todas las líneas</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={String(pageSize)}
-              onValueChange={(value) => {
-                setPageSize(Number(value));
-                setPage(1);
-              }}
-            >
-              <SelectTrigger aria-label="Productos por página">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="50">50 por página</SelectItem>
-                <SelectItem value="100">100 por página</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="all">Todos los proveedores</SelectItem>
+                  {supplierOptions.map((option) => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
-
-          <div className="hidden overflow-hidden rounded-xl border md:block">
-            <Table>
+        </CardHeader>
+        <CardContent>
+          <div className="hidden lg:block">
+            <Table aria-label="Productos configurados para recompra">
               <TableHeader>
                 <TableRow>
-                  <TableHead>SKU</TableHead>
                   <TableHead>Producto</TableHead>
-                  <TableHead>Línea</TableHead>
+                  <TableHead>Proveedor</TableHead>
                   <TableHead className="text-right">Disponible</TableHead>
-                  <TableHead className="text-right">Punto</TableHead>
+                  <TableHead className="text-right">Mínimo</TableHead>
+                  <TableHead className="text-right">Máximo</TableHead>
+                  <TableHead className="text-right">Sugerido</TableHead>
                   <TableHead>Estado</TableHead>
-                  {isAdmin && <TableHead className="text-right">Acciones</TableHead>}
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pageRows.map((row) => (
                   <TableRow key={row.id}>
+                    <TableCell className="max-w-md">
+                      <p className="font-semibold leading-snug">{row.productName}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{row.sku}</p>
+                    </TableCell>
                     <TableCell>
-                      {historySubjects.has(row.sku) ? (
-                        <button
-                          type="button"
-                          className="min-h-11 rounded-lg px-2 font-mono text-xs font-bold text-foreground underline decoration-primary/45 underline-offset-4 transition-colors hover:bg-primary/10 hover:decoration-primary"
-                          onClick={() =>
-                            setHistoryItem(historySubjects.get(row.sku) ?? null)
-                          }
-                          aria-label={`Ver historial de ${row.sku}, ${row.productName}`}
-                        >
-                          {row.sku}
-                        </button>
-                      ) : (
-                        <span className="font-mono text-xs font-bold">
-                          {row.sku}
-                        </span>
-                      )}
+                      <p className="font-medium">{row.primarySupplier ?? "Sin proveedor"}</p>
+                      {row.secondarySupplier ? (
+                        <p className="mt-1 text-xs text-muted-foreground">Alterno: {row.secondarySupplier}</p>
+                      ) : null}
                     </TableCell>
-                    <TableCell className="max-w-sm font-medium">
-                      {row.productName}
-                    </TableCell>
-                    <TableCell>{row.productLine ?? "Sin línea"}</TableCell>
-                    <TableCell className="text-right font-bold tabular-nums">
+                    <TableCell className="text-right font-semibold tabular-nums">
                       {row.hasInventoryRecord ? number.format(row.available) : "—"}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {number.format(row.reorderPoint)}
-                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{number.format(row.minimumStock)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{number.format(row.maximumStock)}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{number.format(row.suggestedQuantity)}</TableCell>
                     <TableCell>{statusBadge(row)}</TableCell>
-                    {isAdmin && (
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(row)}
-                          aria-label={`Editar ${row.sku}`}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => remove(row)}
-                          disabled={removingId === row.id}
-                          aria-label={`Retirar ${row.sku}`}
-                        >
-                          {removingId === row.id ? (
-                            <LoaderCircle className="animate-spin" />
-                          ) : (
-                            <Trash2 />
-                          )}
-                        </Button>
-                      </TableCell>
-                    )}
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {historySubjects.has(row.sku) ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setHistoryItem(historySubjects.get(row.sku) ?? null)}
+                            aria-label={`Ver movimientos de ${row.sku}`}
+                          >
+                            <History aria-hidden="true" />
+                          </Button>
+                        ) : null}
+                        {isAdmin ? (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(row)} aria-label={`Editar ${row.sku}`}>
+                              <Pencil aria-hidden="true" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => remove(row)}
+                              disabled={removingId === row.id}
+                              aria-label={`Retirar ${row.sku}`}
+                            >
+                              {removingId === row.id ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
 
-          <div className="grid gap-3 md:hidden">
+          <div className="grid gap-3 lg:hidden">
             {pageRows.map((row) => (
               <Card key={row.id}>
-                <CardContent className="p-4">
+                <CardHeader>
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      {historySubjects.has(row.sku) ? (
-                        <button
-                          type="button"
-                          className="min-h-11 rounded-lg px-2 font-mono text-xs font-bold text-foreground underline decoration-primary/45 underline-offset-4 transition-colors hover:bg-primary/10 hover:decoration-primary"
-                          onClick={() =>
-                            setHistoryItem(historySubjects.get(row.sku) ?? null)
-                          }
-                          aria-label={`Ver historial de ${row.sku}, ${row.productName}`}
-                        >
-                          {row.sku}
-                        </button>
-                      ) : (
-                        <p className="font-mono text-xs font-bold">{row.sku}</p>
-                      )}
-                      <h3 className="mt-1 font-semibold">{row.productName}</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {row.productLine ?? "Sin línea"}
-                      </p>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base leading-snug">{row.productName}</CardTitle>
+                      <CardDescription className="mt-1">{row.sku}</CardDescription>
                     </div>
                     {statusBadge(row)}
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-muted/45 p-3 text-center">
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3">
+                  <ReplenishmentLevels row={row} />
+                  <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
                     <div>
-                      <p className="text-xs text-muted-foreground">Disponible</p>
-                      <p className="font-bold">
-                        {row.hasInventoryRecord ? number.format(row.available) : "—"}
-                      </p>
+                      <p className="text-xs text-muted-foreground">Proveedor principal</p>
+                      <p className="font-semibold">{row.primarySupplier ?? "Sin proveedor"}</p>
+                      {row.secondarySupplier ? <p className="text-xs text-muted-foreground">Alterno: {row.secondarySupplier}</p> : null}
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Punto de reorden</p>
-                      <p className="font-bold">{number.format(row.reorderPoint)}</p>
-                    </div>
+                    <Badge variant="outline">Comprar {number.format(row.suggestedQuantity)}</Badge>
                   </div>
-                  {historySubjects.has(row.sku) && (
-                    <Button
-                      variant="outline"
-                      className="mt-3 min-h-11 w-full"
-                      onClick={() =>
-                        setHistoryItem(historySubjects.get(row.sku) ?? null)
-                      }
-                    >
-                      <History data-icon="inline-start" />
+                </CardContent>
+                <CardFooter className="flex-wrap gap-2">
+                  {historySubjects.has(row.sku) ? (
+                    <Button variant="outline" className="flex-1" onClick={() => setHistoryItem(historySubjects.get(row.sku) ?? null)}>
+                      <History data-icon="inline-start" aria-hidden="true" />
                       Movimientos
                     </Button>
-                  )}
-                  {isAdmin && (
-                    <div className="mt-3 flex gap-2">
-                      <Button variant="outline" className="flex-1" onClick={() => openEdit(row)}>
-                        <Pencil /> Editar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => remove(row)}
-                        disabled={removingId === row.id}
-                        aria-label={`Retirar ${row.sku}`}
-                      >
-                        {removingId === row.id ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : (
-                          <Trash2 />
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
+                  ) : null}
+                  {isAdmin ? (
+                    <Button variant="outline" className="flex-1" onClick={() => openEdit(row)}>
+                      <Pencil data-icon="inline-start" aria-hidden="true" />
+                      Editar
+                    </Button>
+                  ) : null}
+                </CardFooter>
               </Card>
             ))}
           </div>
 
-          {filtered.length === 0 && (
+          {filtered.length === 0 ? (
             <div className="grid min-h-48 place-items-center rounded-xl border border-dashed p-8 text-center">
               <div>
-                <CheckCircle2 className="mx-auto size-9 text-primary" />
+                <CheckCircle2 className="mx-auto size-9 text-primary" aria-hidden="true" />
                 <p className="mt-3 font-semibold">No hay productos para este filtro</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Prueba otra búsqueda o consulta todos los estados.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">Prueba otra búsqueda, estado o proveedor.</p>
               </div>
             </div>
-          )}
-
-          {filtered.length > 0 && (
-            <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">
-                Mostrando {firstVisible}–{lastVisible} de {filtered.length} productos
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  disabled={safePage <= 1}
-                  onClick={() => setPage((value) => Math.max(1, value - 1))}
-                  aria-label="Página anterior"
-                >
-                  <ChevronLeft />
-                </Button>
-                <span className="min-w-20 text-center text-sm font-medium">
-                  {safePage} de {pageCount}
-                </span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  disabled={safePage >= pageCount}
-                  onClick={() =>
-                    setPage((value) => Math.min(pageCount, value + 1))
-                  }
-                  aria-label="Página siguiente"
-                >
-                  <ChevronRight />
-                </Button>
-              </div>
-            </div>
-          )}
+          ) : null}
         </CardContent>
+        {filtered.length > 0 ? (
+          <CardFooter className="flex flex-col gap-3 border-t sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Mostrando {firstVisible}–{lastVisible} de {filtered.length} productos
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Página anterior">
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <span className="min-w-20 text-center text-sm font-medium">{safePage} de {pageCount}</span>
+              <Button variant="outline" size="icon" disabled={safePage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} aria-label="Página siguiente">
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
+          </CardFooter>
+        ) : null}
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {editing ? "Editar punto de reorden" : "Agregar producto vigilado"}
-            </DialogTitle>
+            <DialogTitle>{editing ? "Editar producto de recompra" : "Agregar producto de recompra"}</DialogTitle>
             <DialogDescription>
-              La alerta se activa cuando la disponibilidad total es igual o menor al
-              punto definido.
+              El mínimo activa la alerta; el máximo determina la cantidad sugerida para el pedido.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="watch-sku">SKU / referencia</Label>
-              <Input
-                id="watch-sku"
-                list="inventory-skus"
-                value={form.sku}
-                disabled={Boolean(editing)}
-                onChange={(event) => changeSku(event.target.value)}
-              />
+          <FieldGroup className="gap-4 sm:grid sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="watch-sku">SKU / referencia</FieldLabel>
+              <Input id="watch-sku" list="inventory-skus" value={form.sku} disabled={Boolean(editing)} onChange={(event) => changeSku(event.target.value)} />
               <datalist id="inventory-skus">
-                {inventoryOptions.map(([sku, name]) => (
-                  <option key={sku} value={sku}>{name}</option>
-                ))}
+                {inventoryOptions.map(([sku, name]) => <option key={sku} value={sku}>{name}</option>)}
               </datalist>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="watch-source">ID de Effi</Label>
-              <Input
-                id="watch-source"
-                type="number"
-                value={form.sourceId}
-                disabled={Boolean(editing)}
-                onChange={(event) =>
-                  setForm((value) => ({ ...value, sourceId: event.target.value }))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="watch-name">Nombre del producto</Label>
-              <Input
-                id="watch-name"
-                value={form.productName}
-                disabled={Boolean(editing)}
-                onChange={(event) =>
-                  setForm((value) => ({ ...value, productName: event.target.value }))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="watch-point">Punto de reorden</Label>
-              <Input
-                id="watch-point"
-                type="number"
-                min={0}
-                value={form.reorderPoint}
-                onChange={(event) =>
-                  setForm((value) => ({ ...value, reorderPoint: event.target.value }))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="watch-notes">Notas</Label>
-              <Input
-                id="watch-notes"
-                value={form.notes}
-                placeholder="Presentación, contacto o condición de compra"
-                onChange={(event) =>
-                  setForm((value) => ({ ...value, notes: event.target.value }))
-                }
-              />
-            </div>
-          </div>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="watch-source">ID de Effi</FieldLabel>
+              <Input id="watch-source" type="number" value={form.sourceId} disabled={Boolean(editing)} onChange={(event) => setForm((value) => ({ ...value, sourceId: event.target.value }))} />
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="watch-name">Nombre del producto</FieldLabel>
+              <Input id="watch-name" value={form.productName} disabled={Boolean(editing)} onChange={(event) => setForm((value) => ({ ...value, productName: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="watch-minimum">Mínimo</FieldLabel>
+              <Input id="watch-minimum" type="number" min={0} step={1} value={form.minimumStock} onChange={(event) => setForm((value) => ({ ...value, minimumStock: event.target.value }))} />
+              <FieldDescription>Activa la alerta al llegar a este nivel.</FieldDescription>
+            </Field>
+            <Field data-invalid={Number(form.maximumStock) < Number(form.minimumStock)}>
+              <FieldLabel htmlFor="watch-maximum">Máximo</FieldLabel>
+              <Input id="watch-maximum" type="number" min={0} step={1} aria-invalid={Number(form.maximumStock) < Number(form.minimumStock)} value={form.maximumStock} onChange={(event) => setForm((value) => ({ ...value, maximumStock: event.target.value }))} />
+              <FieldError>{Number(form.maximumStock) < Number(form.minimumStock) ? "Debe ser igual o mayor al mínimo." : null}</FieldError>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="watch-primary-supplier">Proveedor principal</FieldLabel>
+              <Input id="watch-primary-supplier" list="supplier-options" value={form.primarySupplier} onChange={(event) => setForm((value) => ({ ...value, primarySupplier: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="watch-secondary-supplier">Proveedor secundario</FieldLabel>
+              <Input id="watch-secondary-supplier" list="supplier-options" value={form.secondarySupplier} onChange={(event) => setForm((value) => ({ ...value, secondarySupplier: event.target.value }))} />
+              <datalist id="supplier-options">
+                {supplierOptions.map((option) => <option key={option} value={option} />)}
+              </datalist>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="watch-notes">Notas</FieldLabel>
+              <Input id="watch-notes" value={form.notes} placeholder="Presentación, condición o contacto" onChange={(event) => setForm((value) => ({ ...value, notes: event.target.value }))} />
+            </Field>
+          </FieldGroup>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={save} disabled={saving}>
-              {saving ? <LoaderCircle className="animate-spin" /> : <PackagePlus />}
+              {saving ? <LoaderCircle className="animate-spin" data-icon="inline-start" aria-hidden="true" /> : <PackagePlus data-icon="inline-start" aria-hidden="true" />}
               {saving ? "Guardando…" : "Guardar producto"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <ProductHistorySheet
-        item={historyItem}
-        open={Boolean(historyItem)}
-        onOpenChange={(open) => {
-          if (!open) setHistoryItem(null);
-        }}
-      />
+      <ProductHistorySheet item={historyItem} open={Boolean(historyItem)} onOpenChange={(open) => { if (!open) setHistoryItem(null); }} />
     </div>
   );
 }

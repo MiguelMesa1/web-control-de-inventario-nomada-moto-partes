@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
 import type { InventoryItem, ReorderWatchItem } from "@/types/inventory";
 
-const watch = (sku: string, reorderPoint = 10): ReorderWatchItem => ({
+const watch = (
+  sku: string,
+  minimumStock = 10,
+  maximumStock = 20,
+): ReorderWatchItem => ({
   id: sku,
   sku,
   productName: `Producto ${sku}`,
-  reorderPoint,
+  minimumStock,
+  maximumStock,
   active: true,
   createdAt: "2026-07-29T00:00:00.000Z",
   updatedAt: "2026-07-29T00:00:00.000Z",
@@ -34,10 +39,13 @@ describe("buildReorderAlertRows", () => {
     expect(row.productLine).toBe("Prueba");
   });
 
-  it("activa el punto de reorden cuando quedan 10 o menos", () => {
-    const [row] = buildReorderAlertRows([watch("A")], [stock("A", 10, "Principal")]);
-    expect(row.status).toBe("reorder");
-    expect(row.deficit).toBe(0);
+  it("activa la alerta al llegar al mínimo y sugiere completar hasta el máximo", () => {
+    const [row] = buildReorderAlertRows(
+      [watch("A", 10, 24)],
+      [stock("A", 10, "Principal")],
+    );
+    expect(row.status).toBe("low");
+    expect(row.suggestedQuantity).toBe(14);
   });
 
   it("distingue agotados de referencias ausentes en la carga", () => {
@@ -48,31 +56,25 @@ describe("buildReorderAlertRows", () => {
     expect(rows.map((row) => row.status)).toEqual(["exhausted", "missing"]);
   });
 
-  it("aplica puntos diferentes para XTZ y Boxer", () => {
-    const xtz = stock("XTZ-1", 10, "Principal");
-    xtz.productLine = "XTZ 150";
-    const boxer = stock("BOXER-1", 10, "Principal");
-    boxer.productLine = "Boxer";
-
+  it("respeta los mínimos y máximos definidos por producto", () => {
     const rows = buildReorderAlertRows(
-      [watch("XTZ-1"), watch("BOXER-1")],
-      [xtz, boxer],
+      [watch("XTZ-1", 8, 16), watch("BOXER-1", 15, 30)],
       [
-        { productLine: "xtz 150", reorderPoint: 8 },
-        { productLine: "BOXER", reorderPoint: 15 },
+        stock("XTZ-1", 10, "Principal"),
+        stock("BOXER-1", 10, "Principal"),
       ],
     );
 
     expect(rows).toEqual([
       expect.objectContaining({
         sku: "XTZ-1",
-        reorderPoint: 8,
         status: "healthy",
+        suggestedQuantity: 6,
       }),
       expect.objectContaining({
         sku: "BOXER-1",
-        reorderPoint: 15,
-        status: "reorder",
+        status: "low",
+        suggestedQuantity: 20,
       }),
     ]);
   });

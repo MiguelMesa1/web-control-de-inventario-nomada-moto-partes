@@ -22,7 +22,6 @@ export function getReorderPointForLine(
 export function buildReorderAlertRows(
   watchlist: ReorderWatchItem[],
   inventory: InventoryItem[],
-  lineSettings: ReorderLineSetting[] = [],
 ): ReorderAlertRow[] {
   const availability = new Map<
     string,
@@ -46,27 +45,19 @@ export function buildReorderAlertRows(
     const inventoryState = availability.get(item.sku);
     const available = inventoryState?.available ?? 0;
     const hasInventoryRecord = Boolean(inventoryState?.rows);
-    const reorderPoint = inventoryState
-      ? getReorderPointForLine(
-          inventoryState.productLine,
-          lineSettings,
-          item.reorderPoint,
-        )
-      : item.reorderPoint;
     const status = !hasInventoryRecord
       ? "missing"
       : available <= 0
         ? "exhausted"
-        : available <= reorderPoint
-          ? "reorder"
+        : available <= item.minimumStock
+          ? "low"
           : "healthy";
 
     return {
       ...item,
-      reorderPoint,
       productLine: inventoryState?.productLine,
       available,
-      deficit: Math.max(0, reorderPoint - available),
+      suggestedQuantity: Math.max(0, item.maximumStock - available),
       hasInventoryRecord,
       status,
     };

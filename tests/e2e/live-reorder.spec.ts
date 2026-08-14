@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const email = process.env.LIVE_TEST_EMAIL;
 const password = process.env.LIVE_TEST_PASSWORD;
 
-test.describe("Punto de Reorden real", () => {
+test.describe("Recompra real", () => {
   test.skip(!email || !password, "Define LIVE_TEST_EMAIL y LIVE_TEST_PASSWORD.");
 
   test("el administrador consulta las referencias y puede abrir el alta", async ({
@@ -17,32 +17,30 @@ test.describe("Punto de Reorden real", () => {
 
     await page.goto("/reorder");
     await expect(
-      page.getByRole("heading", { name: "Punto de Reorden" }),
+      page.getByRole("heading", { name: "Recompra" }),
     ).toBeVisible();
-    await expect(page.getByText("112", { exact: true }).first()).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Agregar producto" }),
     ).toBeVisible();
 
+    await page.getByRole("combobox", { name: "Filtrar por estado" }).click();
+    await page.getByRole("option", { name: "Todos los estados" }).click();
+
     await page
-      .getByPlaceholder("Buscar por SKU o producto…")
+      .getByPlaceholder("Buscar por producto o referencia…")
       .fill("2292401");
     await expect(
-      page.getByRole("cell", { name: "2292401", exact: true }),
+      page.getByText("2292401", { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Retirar 2292401" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("combobox", { name: "Filtrar por línea" }),
-    ).toContainText("Líneas principales");
-    await expect(
-      page.getByRole("combobox", { name: "Productos por página" }),
-    ).toContainText("50 por página");
+    await expect(page.getByRole("combobox", { name: "Filtrar por estado" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Filtrar por proveedor" })).toBeVisible();
 
     await page.getByRole("button", { name: "Agregar producto" }).click();
     await expect(
-      page.getByRole("dialog").getByText("Agregar producto vigilado"),
+      page.getByRole("dialog").getByText("Agregar producto de recompra"),
     ).toBeVisible();
   });
 });

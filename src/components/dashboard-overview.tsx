@@ -59,17 +59,16 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
   const reorderPriorities = buildReorderAlertRows(
     data.reorderWatchlist.filter((item) => item.active),
     data.current,
-    data.reorderLineSettings,
   )
     .filter(
       (item) =>
         item.hasInventoryRecord &&
-        (item.status === "exhausted" || item.status === "reorder"),
+        (item.status === "exhausted" || item.status === "low"),
     )
     .sort(
       (a, b) =>
         a.available - b.available ||
-        b.deficit - a.deficit ||
+        b.suggestedQuantity - a.suggestedQuantity ||
         a.productName.localeCompare(b.productName, "es"),
     )
     .slice(0, 10);
@@ -199,12 +198,12 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
               Prioridad de recompra
             </CardTitle>
             <CardDescription className="mt-1">
-              Los 10 productos vigilados con menor disponibilidad.
+              Productos que llegaron a su mínimo, ordenados por disponibilidad.
             </CardDescription>
           </div>
           <Button asChild variant="outline" size="sm">
             <Link href="/reorder">
-              Ver Punto de Reorden
+              Ver recompra
               <ArrowRight data-icon="inline-end" />
             </Link>
           </Button>
@@ -251,10 +250,10 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
                     </span>
                     <span className="hidden text-right md:block">
                       <span className="block text-[0.68rem] uppercase text-muted-foreground">
-                        Punto
+                        Mínimo
                       </span>
                       <span className="mt-1 block font-bold tabular-nums">
-                        {number.format(item.reorderPoint)}
+                        {number.format(item.minimumStock)}
                       </span>
                     </span>
                     <span className="col-start-2 flex gap-4 text-xs text-muted-foreground md:hidden">
@@ -265,9 +264,9 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
                         </strong>
                       </span>
                       <span>
-                        Punto:{" "}
+                        Mínimo:{" "}
                         <strong className="text-foreground">
-                          {number.format(item.reorderPoint)}
+                          {number.format(item.minimumStock)}
                         </strong>
                       </span>
                     </span>
@@ -286,7 +285,7 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
                   No hay productos por solicitar
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Los productos vigilados están por encima de su punto de reorden.
+                  Los productos vigilados están por encima de su mínimo.
                 </p>
               </div>
             </div>

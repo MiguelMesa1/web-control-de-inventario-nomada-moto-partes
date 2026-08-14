@@ -9,7 +9,6 @@ export async function GET() {
   const alerts = buildReorderAlertRows(
     data.reorderWatchlist.filter((item) => item.active),
     data.current,
-    data.reorderLineSettings,
   )
     .filter((item) => item.status !== "healthy")
     .sort(
@@ -26,7 +25,9 @@ export async function GET() {
       productName: item.productName,
       productLine: item.productLine,
       available: item.available,
-      reorderPoint: item.reorderPoint,
+      minimumStock: item.minimumStock,
+      maximumStock: item.maximumStock,
+      primarySupplier: item.primarySupplier,
       hasInventoryRecord: item.hasInventoryRecord,
     }));
 

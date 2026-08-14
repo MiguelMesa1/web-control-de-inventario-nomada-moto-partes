@@ -6,7 +6,7 @@ import { getAppProfile } from "@/lib/insforge/session";
 import { isValidInventorySourceDate } from "@/lib/inventory/source-date";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
 import { requireJsonRequest } from "@/lib/security/request";
-import type { InventoryItem, ReorderLineSetting, ReorderWatchItem } from "@/types/inventory";
+import type { InventoryItem, ReorderWatchItem } from "@/types/inventory";
 
 const escapeHtml = (value: string) => value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#039;" })[character] ?? character);
 
@@ -14,15 +14,18 @@ function reorderEmailHtml(
   rows: ReturnType<typeof buildReorderAlertRows>,
   context: { filename: string; uploaderName: string },
 ) {
-  const suggestedUnits = rows.reduce((total, row) => total + row.deficit, 0);
+  const suggestedUnits = rows.reduce(
+    (total, row) => total + row.suggestedQuantity,
+    0,
+  );
   const items = rows
     .map(
       (row) =>
-        `<tr><td>${escapeHtml(row.sku)}</td><td>${escapeHtml(row.productName)}</td><td>${escapeHtml(row.productLine ?? "Sin línea")}</td><td>${escapeHtml(row.supplier ?? "Sin proveedor")}</td><td>${row.status === "exhausted" ? "Agotado" : "Por recompra"}</td><td align="right">${row.available}</td><td align="right">${row.reorderPoint}</td><td align="right"><strong>${row.deficit}</strong></td></tr>`,
+        `<tr><td>${escapeHtml(row.sku)}</td><td>${escapeHtml(row.productName)}</td><td>${escapeHtml(row.productLine ?? "Sin línea")}</td><td>${escapeHtml(row.primarySupplier ?? "Sin proveedor")}</td><td>${row.status === "exhausted" ? "Agotado" : "Por reponer"}</td><td align="right">${row.available}</td><td align="right">${row.minimumStock}</td><td align="right">${row.maximumStock}</td><td align="right"><strong>${row.suggestedQuantity}</strong></td></tr>`,
     )
     .join("");
 
-  return `<!doctype html><html lang="es"><body style="font-family:Arial,sans-serif;color:#1f2937"><h2 style="color:#e11d48">Stock bajo - Nomada Moto Partes</h2><p>Hola ${escapeHtml(context.uploaderName)}, después de publicar <strong>${escapeHtml(context.filename)}</strong> encontramos productos que requieren recompra.</p><p><strong>${rows.length}</strong> referencias por revisar · <strong>${suggestedUnits}</strong> unidades sugeridas para comprar.</p><table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:14px"><thead style="background:#f3f4f6"><tr><th>SKU</th><th>Producto</th><th>Línea</th><th>Proveedor</th><th>Estado</th><th>Disponible</th><th>Punto de reorden</th><th>Compra sugerida</th></tr></thead><tbody>${items}</tbody></table><p style="color:#6b7280;font-size:12px">Este aviso se generó automáticamente al publicar el inventario.</p></body></html>`;
+  return `<!doctype html><html lang="es"><body style="font-family:Arial,sans-serif;color:#1f2937"><h2 style="color:#e11d48">Inventario bajo - Nomada Moto Partes</h2><p>Hola ${escapeHtml(context.uploaderName)}, después de publicar <strong>${escapeHtml(context.filename)}</strong> encontramos productos que llegaron a su mínimo.</p><p><strong>${rows.length}</strong> referencias por revisar · <strong>${suggestedUnits}</strong> unidades sugeridas para completar los máximos.</p><table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:14px"><thead style="background:#f3f4f6"><tr><th>SKU</th><th>Producto</th><th>Línea</th><th>Proveedor principal</th><th>Estado</th><th>Disponible</th><th>Mínimo</th><th>Máximo</th><th>Compra sugerida</th></tr></thead><tbody>${items}</tbody></table><p style="color:#6b7280;font-size:12px">Este aviso se generó automáticamente al publicar el inventario.</p></body></html>`;
 }
 
 function errorMessage(caught: unknown, fallback: string) {
@@ -72,39 +75,28 @@ async function processReorderNotifications(
   items: InventoryItem[],
 ) {
   let watchlist: ReorderWatchItem[];
-  let lineSettings: ReorderLineSetting[];
-
   try {
-    const [watchResult, lineResult] = await Promise.all([
-      insforge.database
-        .from("reorder_watchlist")
-        .select(
-          "id,source_id,sku,product_name,supplier,reorder_point,active,notes,created_at,updated_at",
-        )
-        .eq("active", true),
-      insforge.database
-        .from("reorder_line_settings")
-        .select("product_line,reorder_point"),
-    ]);
-    if (watchResult.error || lineResult.error) {
-      throw watchResult.error ?? lineResult.error;
-    }
+    const watchResult = await insforge.database
+      .from("reorder_watchlist")
+      .select(
+        "id,source_id,sku,product_name,primary_supplier,secondary_supplier,minimum_stock,maximum_stock,active,notes,created_at,updated_at",
+      )
+      .eq("active", true);
+    if (watchResult.error) throw watchResult.error;
 
     watchlist = (watchResult.data ?? []).map((item) => ({
       id: String(item.id),
       sourceId: item.source_id == null ? undefined : Number(item.source_id),
       sku: String(item.sku),
       productName: String(item.product_name),
-      supplier: item.supplier ?? undefined,
-      reorderPoint: Number(item.reorder_point),
+      primarySupplier: item.primary_supplier ?? undefined,
+      secondarySupplier: item.secondary_supplier ?? undefined,
+      minimumStock: Number(item.minimum_stock),
+      maximumStock: Number(item.maximum_stock),
       active: Boolean(item.active),
       notes: item.notes ?? undefined,
       createdAt: String(item.created_at),
       updatedAt: String(item.updated_at),
-    }));
-    lineSettings = (lineResult.data ?? []).map((item) => ({
-      productLine: String(item.product_line),
-      reorderPoint: Number(item.reorder_point),
     }));
   } catch (caught) {
     return {
@@ -116,18 +108,17 @@ async function processReorderNotifications(
     };
   }
 
-  const belowPoint = buildReorderAlertRows(
-    watchlist,
-    items,
-    lineSettings,
-  ).filter(
-    (item) => item.status === "exhausted" || item.status === "reorder",
+  const belowMinimum = buildReorderAlertRows(watchlist, items).filter(
+    (item) =>
+      item.status === "missing" ||
+      item.status === "exhausted" ||
+      item.status === "low",
   );
-  if (!belowPoint.length) return { reorderCount: 0 };
+  if (!belowMinimum.length) return { reorderCount: 0 };
 
-  const subject = `Stock bajo: ${belowPoint.length} referencias por revisar`;
-  const suggestedUnits = belowPoint.reduce(
-    (total, row) => total + row.deficit,
+  const subject = `Reposición requerida: ${belowMinimum.length} ${belowMinimum.length === 1 ? "referencia" : "referencias"} por revisar`;
+  const suggestedUnits = belowMinimum.reduce(
+    (total, row) => total + row.suggestedQuantity,
     0,
   );
   const startedAt = Date.now();
@@ -139,7 +130,7 @@ async function processReorderNotifications(
     recipientEmail: recipient.email,
     recipientName: recipient.displayName,
     subject,
-    alertCount: belowPoint.length,
+    alertCount: belowMinimum.length,
     suggestedUnits,
   };
 
@@ -147,7 +138,7 @@ async function processReorderNotifications(
     const receipt = await sendBrevoEmail({
       to: recipient.email,
       subject,
-      html: reorderEmailHtml(belowPoint, {
+      html: reorderEmailHtml(belowMinimum, {
         filename,
         uploaderName: recipient.displayName,
       }),
@@ -160,7 +151,7 @@ async function processReorderNotifications(
       providerResponse: receipt.response,
     });
     return {
-      reorderCount: belowPoint.length,
+      reorderCount: belowMinimum.length,
       emailRecipient: recipient.email,
       emailLogWarning,
     };
@@ -177,7 +168,7 @@ async function processReorderNotifications(
       ),
     });
     return {
-      reorderCount: belowPoint.length,
+      reorderCount: belowMinimum.length,
       emailRecipient: recipient.email,
       emailWarning: errorMessage(
         caught,
