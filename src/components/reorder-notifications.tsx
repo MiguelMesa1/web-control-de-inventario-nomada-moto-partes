@@ -26,7 +26,9 @@ export function ReorderNotifications() {
       productName: string;
       productLine?: string;
       available: number;
-      reorderPoint: number;
+      minimumStock: number;
+      maximumStock: number;
+      primarySupplier?: string;
       hasInventoryRecord: boolean;
     }>
   >([]);
@@ -61,8 +63,8 @@ export function ReorderNotifications() {
           className="relative"
           aria-label={
             loaded
-              ? `${alerts.length} notificaciones de reorden`
-              : "Cargando notificaciones de reorden"
+              ? `${alerts.length} alertas de reposición`
+              : "Cargando alertas de reposición"
           }
         >
           <Bell />
@@ -75,9 +77,9 @@ export function ReorderNotifications() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-2rem))]">
         <DropdownMenuLabel>
-          <span className="block">Avisos de reorden</span>
+          <span className="block">Alertas de reposición</span>
           <span className="mt-1 block text-xs font-normal text-muted-foreground">
-            Ordenados desde la menor disponibilidad.
+            Productos que ya necesitan revisión de compra.
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -94,8 +96,11 @@ export function ReorderNotifications() {
                     {item.productLine ? `${item.productLine} · ` : ""}
                     {item.sku} ·{" "}
                     {item.hasInventoryRecord
-                      ? `quedan ${number.format(item.available)} · punto ${number.format(item.reorderPoint)}`
-                      : `sin registro · punto ${number.format(item.reorderPoint)}`}
+                      ? `quedan ${number.format(item.available)} · mínimo ${number.format(item.minimumStock)}`
+                      : `sin registro · mínimo ${number.format(item.minimumStock)}`}
+                    {item.primarySupplier
+                      ? ` · ${item.primarySupplier}`
+                      : ""}
                   </span>
                 </span>
               </Link>
@@ -113,7 +118,7 @@ export function ReorderNotifications() {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/reorder" className="justify-center font-semibold">
-            Ver Punto de Reorden
+            Ver recompra
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>

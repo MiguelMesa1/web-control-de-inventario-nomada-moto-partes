@@ -8,6 +8,9 @@ import type {
   InventoryHistoryPoint,
   InventoryItem,
   InventorySnapshot,
+  OrdersPageData,
+  PurchaseOrder,
+  PurchaseOrderItem,
   ReorderLineSetting,
   ReorderWatchItem,
 } from "@/types/inventory";
@@ -201,7 +204,7 @@ async function loadReorderWatchlist(
   const result = await insforge.database
     .from("reorder_watchlist")
     .select(
-      "id,source_id,sku,product_name,supplier,reorder_point,active,notes,created_at,updated_at",
+      "id,source_id,sku,product_name,primary_supplier,secondary_supplier,minimum_stock,maximum_stock,active,notes,created_at,updated_at",
     )
     .order("product_name");
   if (result.error) throw new Error(result.error.message);
@@ -215,12 +218,74 @@ async function loadReorderWatchlist(
           : Number(item.source_id),
       sku: String(item.sku),
       productName: String(item.product_name),
-      supplier: item.supplier ? String(item.supplier) : undefined,
-      reorderPoint: Number(item.reorder_point),
+      primarySupplier: item.primary_supplier
+        ? String(item.primary_supplier)
+        : undefined,
+      secondarySupplier: item.secondary_supplier
+        ? String(item.secondary_supplier)
+        : undefined,
+      minimumStock: Number(item.minimum_stock),
+      maximumStock: Number(item.maximum_stock),
       active: Boolean(item.active),
       notes: item.notes ? String(item.notes) : undefined,
       createdAt: String(item.created_at),
       updatedAt: String(item.updated_at),
+    }),
+  );
+}
+
+async function loadPurchaseOrders(
+  insforge: InsForgeServerClient,
+  limit = 60,
+): Promise<PurchaseOrder[]> {
+  const ordersResult = await insforge.database
+    .from("purchase_orders")
+    .select(
+      "id,order_number,supplier_name,status,notes,created_at,updated_at",
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (ordersResult.error) throw new Error(ordersResult.error.message);
+
+  const orderIds = (ordersResult.data ?? []).map((order) => String(order.id));
+  if (!orderIds.length) return [];
+
+  const itemsResult = await insforge.database
+    .from("purchase_order_items")
+    .select(
+      "id,order_id,sku,product_name,quantity,available_at_creation,minimum_stock,maximum_stock,created_at",
+    )
+    .in("order_id", orderIds)
+    .order("product_name");
+  if (itemsResult.error) throw new Error(itemsResult.error.message);
+
+  const itemsByOrder = new Map<string, PurchaseOrderItem[]>();
+  for (const item of itemsResult.data ?? []) {
+    const orderId = String(item.order_id);
+    const mapped: PurchaseOrderItem = {
+      id: String(item.id),
+      orderId,
+      sku: String(item.sku),
+      productName: String(item.product_name),
+      quantity: Number(item.quantity),
+      availableAtCreation: Number(item.available_at_creation),
+      minimumStock: Number(item.minimum_stock),
+      maximumStock: Number(item.maximum_stock),
+      createdAt: String(item.created_at),
+    };
+    itemsByOrder.set(orderId, [...(itemsByOrder.get(orderId) ?? []), mapped]);
+  }
+
+  return (ordersResult.data ?? []).map(
+    (order): PurchaseOrder => ({
+      id: String(order.id),
+      orderNumber: String(order.order_number),
+      supplierName: String(order.supplier_name),
+      status: order.status as PurchaseOrder["status"],
+      notes: order.notes ? String(order.notes) : undefined,
+      createdAt: String(order.created_at),
+      updatedAt: String(order.updated_at),
+      items: itemsByOrder.get(String(order.id)) ?? [],
     }),
   );
 }
@@ -252,14 +317,12 @@ export async function loadDashboardData(): Promise<InventoryData> {
     importRuns,
     lowStockThreshold,
     reorderWatchlist,
-    reorderLineSettings,
   ] = await Promise.all([
     loadCurrent(insforge),
     loadSnapshots(insforge, 3),
     loadImportRuns(insforge, 4),
     loadLowStockThreshold(insforge),
     loadReorderWatchlist(insforge),
-    loadReorderLineSettings(insforge),
   ]);
 
   const currentSnapshotId = current[0]?.snapshotId;
@@ -276,7 +339,6 @@ export async function loadDashboardData(): Promise<InventoryData> {
     snapshots,
     importRuns,
     reorderWatchlist,
-    reorderLineSettings,
     lowStockThreshold,
   });
 }
@@ -323,15 +385,13 @@ export async function loadReorderPageData(): Promise<InventoryData> {
   if (!isInsForgeConfigured()) return demoInventoryData;
 
   const insforge = await createAuthenticatedInsForgeServerClient();
-  const [current, reorderWatchlist, reorderLineSettings] = await Promise.all([
+  const [current, reorderWatchlist] = await Promise.all([
     loadCurrent(insforge),
     loadReorderWatchlist(insforge),
-    loadReorderLineSettings(insforge),
   ]);
   return emptyInventoryData({
     current,
     reorderWatchlist,
-    reorderLineSettings,
   });
 }
 
@@ -340,8 +400,26 @@ export async function loadReorderAlertData() {
   return {
     current: data.current,
     reorderWatchlist: data.reorderWatchlist,
-    reorderLineSettings: data.reorderLineSettings,
   };
+}
+
+export async function loadOrdersPageData(): Promise<OrdersPageData> {
+  if (!isInsForgeConfigured()) {
+    return {
+      current: demoInventoryData.current,
+      reorderWatchlist: demoInventoryData.reorderWatchlist,
+      purchaseOrders: [],
+      isDemo: true,
+    };
+  }
+
+  const insforge = await createAuthenticatedInsForgeServerClient();
+  const [current, reorderWatchlist, purchaseOrders] = await Promise.all([
+    loadCurrent(insforge),
+    loadReorderWatchlist(insforge),
+    loadPurchaseOrders(insforge),
+  ]);
+  return { current, reorderWatchlist, purchaseOrders, isDemo: false };
 }
 
 export async function loadInventoryData(): Promise<InventoryData> {
@@ -374,15 +452,11 @@ export async function loadInventorySettings() {
   if (!isInsForgeConfigured()) {
     return {
       lowStockThreshold: demoInventoryData.lowStockThreshold,
-      reorderLineSettings: demoInventoryData.reorderLineSettings,
       isDemo: true,
     };
   }
 
   const insforge = await createAuthenticatedInsForgeServerClient();
-  const [lowStockThreshold, reorderLineSettings] = await Promise.all([
-    loadLowStockThreshold(insforge),
-    loadReorderLineSettings(insforge),
-  ]);
-  return { lowStockThreshold, reorderLineSettings, isDemo: false };
+  const lowStockThreshold = await loadLowStockThreshold(insforge);
+  return { lowStockThreshold, isDemo: false };
 }

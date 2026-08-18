@@ -134,8 +134,10 @@ export interface ReorderWatchItem {
   sourceId?: number;
   sku: string;
   productName: string;
-  supplier?: string;
-  reorderPoint: number;
+  primarySupplier?: string;
+  secondarySupplier?: string;
+  minimumStock: number;
+  maximumStock: number;
   active: boolean;
   notes?: string;
   createdAt: string;
@@ -182,14 +184,50 @@ export interface PlasticKitAvailability extends PlasticKitDefinition {
   limitingPartSkus: string[];
 }
 
-export type ReorderStatus = "missing" | "exhausted" | "reorder" | "healthy";
+export type ReorderStatus = "missing" | "exhausted" | "low" | "healthy";
 
 export interface ReorderAlertRow extends ReorderWatchItem {
   productLine?: string;
   available: number;
-  deficit: number;
+  suggestedQuantity: number;
   hasInventoryRecord: boolean;
   status: ReorderStatus;
+}
+
+export type PurchaseOrderStatus =
+  | "draft"
+  | "ordered"
+  | "received"
+  | "cancelled";
+
+export interface PurchaseOrderItem {
+  id: string;
+  orderId: string;
+  sku: string;
+  productName: string;
+  quantity: number;
+  availableAtCreation: number;
+  minimumStock: number;
+  maximumStock: number;
+  createdAt: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  orderNumber: string;
+  supplierName: string;
+  status: PurchaseOrderStatus;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  items: PurchaseOrderItem[];
+}
+
+export interface OrdersPageData {
+  current: InventoryItem[];
+  reorderWatchlist: ReorderWatchItem[];
+  purchaseOrders: PurchaseOrder[];
+  isDemo: boolean;
 }
 
 export interface InventoryData {

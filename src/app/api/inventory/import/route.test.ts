@@ -115,8 +115,10 @@ describe("POST /api/inventory/import", () => {
                       source_id: 1,
                       sku: "SKU-1",
                       product_name: "Producto de prueba",
-                      supplier: null,
-                      reorder_point: 5,
+                      primary_supplier: "Proveedor principal",
+                      secondary_supplier: "Proveedor alterno",
+                      minimum_stock: 5,
+                      maximum_stock: 12,
                       active: true,
                       notes: null,
                       created_at: "2026-07-30T05:00:00.000Z",
@@ -184,8 +186,10 @@ describe("POST /api/inventory/import", () => {
                       source_id: 1,
                       sku: "SKU-1",
                       product_name: "Producto de prueba",
-                      supplier: null,
-                      reorder_point: 5,
+                      primary_supplier: "Proveedor principal",
+                      secondary_supplier: "Proveedor alterno",
+                      minimum_stock: 5,
+                      maximum_stock: 12,
                       active: true,
                       notes: null,
                       created_at: "2026-07-30T05:00:00.000Z",
@@ -221,7 +225,7 @@ describe("POST /api/inventory/import", () => {
     expect(sendBrevoEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "admin@example.com",
-        subject: "Stock bajo: 1 referencias por revisar",
+        subject: "Reposición requerida: 1 referencia por revisar",
       }),
     );
     expect(payload).toMatchObject({

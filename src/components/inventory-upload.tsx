@@ -181,7 +181,7 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
       } else if (reorderWarning || emailLogWarning) {
         toast.warning("Inventario publicado con un aviso", {
           description: reorderWarning
-            ? "La carga quedó guardada, pero no pudimos calcular las alertas de recompra. Puedes revisarlas desde Punto de Reorden."
+            ? "La carga quedó guardada, pero no pudimos calcular las alertas de reposición. Puedes revisarlas desde Recompra."
             : "El correo se procesó, pero no pudimos guardar su registro en Ajustes.",
         });
       }

@@ -9,7 +9,7 @@ function errorMessage(error: unknown) {
     "message" in error &&
     typeof error.message === "string"
     ? error.message
-    : "No pudimos actualizar el Punto de Reorden.";
+    : "No pudimos actualizar la configuración de recompra.";
 }
 
 async function requireAdmin() {
@@ -36,12 +36,17 @@ export async function POST(request: Request) {
     sourceId?: number;
     sku?: string;
     productName?: string;
-    reorderPoint?: number;
+    primarySupplier?: string;
+    secondarySupplier?: string;
+    minimumStock?: number;
+    maximumStock?: number;
     notes?: string;
   };
   const sku = body.sku?.trim();
   const productName = body.productName?.trim();
-  const reorderPoint = Number(body.reorderPoint ?? 10);
+  const primarySupplier = body.primarySupplier?.trim();
+  const minimumStock = Number(body.minimumStock ?? 10);
+  const maximumStock = Number(body.maximumStock ?? 20);
 
   if (!sku || !productName) {
     return NextResponse.json(
@@ -49,9 +54,21 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (!Number.isFinite(reorderPoint) || reorderPoint < 0 || reorderPoint > 999999) {
+  if (!primarySupplier) {
     return NextResponse.json(
-      { message: "El punto de reorden debe estar entre 0 y 999.999." },
+      { message: "El proveedor principal es obligatorio." },
+      { status: 400 },
+    );
+  }
+  if (
+    !Number.isFinite(minimumStock) ||
+    !Number.isFinite(maximumStock) ||
+    minimumStock < 0 ||
+    maximumStock < minimumStock ||
+    maximumStock > 999999
+  ) {
+    return NextResponse.json(
+      { message: "El máximo debe ser igual o mayor al mínimo." },
       { status: 400 },
     );
   }
@@ -64,7 +81,12 @@ export async function POST(request: Request) {
         source_id: body.sourceId || null,
         sku,
         product_name: productName,
-        reorder_point: reorderPoint,
+        primary_supplier: primarySupplier,
+        secondary_supplier: body.secondarySupplier?.trim() || null,
+        minimum_stock: minimumStock,
+        maximum_stock: maximumStock,
+        supplier: primarySupplier,
+        reorder_point: minimumStock,
         notes: body.notes?.trim() || null,
         created_by: profile.id,
         updated_by: profile.id,
@@ -77,7 +99,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         message: /unique|duplicate/i.test(message)
-          ? "Esta referencia ya está incluida en el Punto de Reorden."
+          ? "Esta referencia ya está incluida en Recompra."
           : message,
       },
       { status: 400 },
@@ -95,17 +117,34 @@ export async function PATCH(request: Request) {
 
   const body = (await request.json()) as {
     id?: string;
-    reorderPoint?: number;
+    primarySupplier?: string;
+    secondarySupplier?: string;
+    minimumStock?: number;
+    maximumStock?: number;
     notes?: string;
     active?: boolean;
   };
-  const reorderPoint = Number(body.reorderPoint);
+  const primarySupplier = body.primarySupplier?.trim();
+  const minimumStock = Number(body.minimumStock);
+  const maximumStock = Number(body.maximumStock);
   if (!body.id) {
     return NextResponse.json({ message: "Falta el identificador." }, { status: 400 });
   }
-  if (!Number.isFinite(reorderPoint) || reorderPoint < 0 || reorderPoint > 999999) {
+  if (!primarySupplier) {
     return NextResponse.json(
-      { message: "El punto de reorden debe estar entre 0 y 999.999." },
+      { message: "El proveedor principal es obligatorio." },
+      { status: 400 },
+    );
+  }
+  if (
+    !Number.isFinite(minimumStock) ||
+    !Number.isFinite(maximumStock) ||
+    minimumStock < 0 ||
+    maximumStock < minimumStock ||
+    maximumStock > 999999
+  ) {
+    return NextResponse.json(
+      { message: "El máximo debe ser igual o mayor al mínimo." },
       { status: 400 },
     );
   }
@@ -114,7 +153,12 @@ export async function PATCH(request: Request) {
   const { error } = await insforge.database
     .from("reorder_watchlist")
     .update({
-      reorder_point: reorderPoint,
+      primary_supplier: primarySupplier,
+      secondary_supplier: body.secondarySupplier?.trim() || null,
+      minimum_stock: minimumStock,
+      maximum_stock: maximumStock,
+      supplier: primarySupplier,
+      reorder_point: minimumStock,
       notes: body.notes?.trim() || null,
       active: body.active ?? true,
       updated_by: profile.id,
