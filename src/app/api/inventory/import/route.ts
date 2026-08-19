@@ -5,10 +5,29 @@ import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { isValidInventorySourceDate } from "@/lib/inventory/source-date";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
+import { loadActiveOrderSkus } from "@/lib/orders/active-order-data";
+import { excludeActiveOrderRows } from "@/lib/orders/active-orders";
 import { requireJsonRequest } from "@/lib/security/request";
-import type { InventoryItem, ReorderWatchItem } from "@/types/inventory";
+import {
+  isPlainObject,
+  parseFiniteNumber,
+  readJsonObject,
+  sanitizeText,
+} from "@/lib/security/input";
+import type {
+  InventoryItem,
+  ReorderStatus,
+  ReorderWatchItem,
+} from "@/types/inventory";
 
 const escapeHtml = (value: string) => value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#039;" })[character] ?? character);
+
+export function reorderEmailStatusLabel(status: ReorderStatus) {
+  if (status === "missing") return "Sin registro";
+  if (status === "exhausted") return "Agotado";
+  if (status === "low") return "Por reponer";
+  return "Nivel estable";
+}
 
 function reorderEmailHtml(
   rows: ReturnType<typeof buildReorderAlertRows>,
@@ -21,7 +40,7 @@ function reorderEmailHtml(
   const items = rows
     .map(
       (row) =>
-        `<tr><td>${escapeHtml(row.sku)}</td><td>${escapeHtml(row.productName)}</td><td>${escapeHtml(row.productLine ?? "Sin línea")}</td><td>${escapeHtml(row.primarySupplier ?? "Sin proveedor")}</td><td>${row.status === "exhausted" ? "Agotado" : "Por reponer"}</td><td align="right">${row.available}</td><td align="right">${row.minimumStock}</td><td align="right">${row.maximumStock}</td><td align="right"><strong>${row.suggestedQuantity}</strong></td></tr>`,
+        `<tr><td>${escapeHtml(row.sku)}</td><td>${escapeHtml(row.productName)}</td><td>${escapeHtml(row.productLine ?? "Sin línea")}</td><td>${escapeHtml(row.primarySupplier ?? "Sin proveedor")}</td><td>${reorderEmailStatusLabel(row.status)}</td><td align="right">${row.hasInventoryRecord ? row.available : "—"}</td><td align="right">${row.minimumStock}</td><td align="right">${row.maximumStock}</td><td align="right"><strong>${row.suggestedQuantity}</strong></td></tr>`,
     )
     .join("");
 
@@ -75,14 +94,19 @@ async function processReorderNotifications(
   items: InventoryItem[],
 ) {
   let watchlist: ReorderWatchItem[];
+  let activeOrderSkus: string[];
   try {
-    const watchResult = await insforge.database
-      .from("reorder_watchlist")
-      .select(
-        "id,source_id,sku,product_name,primary_supplier,secondary_supplier,minimum_stock,maximum_stock,active,notes,created_at,updated_at",
-      )
-      .eq("active", true);
+    const [watchResult, loadedActiveOrderSkus] = await Promise.all([
+      insforge.database
+        .from("reorder_watchlist")
+        .select(
+          "id,source_id,sku,product_name,primary_supplier,secondary_supplier,minimum_stock,maximum_stock,active,notes,created_at,updated_at",
+        )
+        .eq("active", true),
+      loadActiveOrderSkus(insforge),
+    ]);
     if (watchResult.error) throw watchResult.error;
+    activeOrderSkus = loadedActiveOrderSkus;
 
     watchlist = (watchResult.data ?? []).map((item) => ({
       id: String(item.id),
@@ -108,11 +132,14 @@ async function processReorderNotifications(
     };
   }
 
-  const belowMinimum = buildReorderAlertRows(watchlist, items).filter(
-    (item) =>
-      item.status === "missing" ||
-      item.status === "exhausted" ||
-      item.status === "low",
+  const belowMinimum = excludeActiveOrderRows(
+    buildReorderAlertRows(watchlist, items).filter(
+      (item) =>
+        item.status === "missing" ||
+        item.status === "exhausted" ||
+        item.status === "low",
+    ),
+    activeOrderSkus,
   );
   if (!belowMinimum.length) return { reorderCount: 0 };
 
@@ -179,6 +206,19 @@ async function processReorderNotifications(
   }
 }
 
+function normalizeInventoryItem(value: unknown, sourceExportedAt: string): InventoryItem | null {
+  if (!isPlainObject(value)) return null;
+  const sku = sanitizeText(value.sku, { maxLength: 120 });
+  const productName = sanitizeText(value.productName, { maxLength: 300 });
+  const productLine = sanitizeText(value.productLine, { maxLength: 120 });
+  const warehouse = sanitizeText(value.warehouse, { maxLength: 120 });
+  const stock = parseFiniteNumber(value.stock, { min: -999_999_999, max: 999_999_999 });
+  const reserved = parseFiniteNumber(value.reserved, { min: -999_999_999, max: 999_999_999 });
+  const available = parseFiniteNumber(value.available, { min: -999_999_999, max: 999_999_999 });
+  if (!sku || !productName || !productLine || !warehouse || stock === null || reserved === null || available === null) return null;
+  return { sku, productName, productLine, warehouse, stock, reserved, available, sourceExportedAt };
+}
+
 export async function POST(request: Request) {
   const requestError = requireJsonRequest(request, 5_500_000);
   if (requestError) return requestError;
@@ -188,24 +228,29 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as {
-      filename?: string;
-      checksum?: string;
-      sourceExportedAt?: string;
-      items?: InventoryItem[];
-    };
-    if (!body.filename || !body.checksum || !body.sourceExportedAt || !body.items?.length) {
+    const parsed = await readJsonObject(request);
+    if (parsed.error) return parsed.error;
+    const filename = sanitizeText(parsed.data.filename, { maxLength: 255 });
+    const checksum = sanitizeText(parsed.data.checksum, { maxLength: 128 });
+    const sourceExportedAt = sanitizeText(parsed.data.sourceExportedAt, { maxLength: 40 });
+    const rawItems = parsed.data.items;
+    if (!filename || !checksum || !sourceExportedAt || !Array.isArray(rawItems) || !rawItems.length) {
       return NextResponse.json({ message: "La carga está incompleta." }, { status: 400 });
     }
-    if (!isValidInventorySourceDate(body.sourceExportedAt)) {
+    if (!/^[a-f0-9]{64}$/i.test(checksum) || !isValidInventorySourceDate(sourceExportedAt)) {
       return NextResponse.json({ message: "La fecha del archivo no es válida." }, { status: 400 });
     }
-    if (body.items.length > 100_000) {
+    if (rawItems.length > 100_000) {
       return NextResponse.json({ message: "La carga supera 100.000 filas." }, { status: 413 });
     }
+    const items = rawItems.map((item) => normalizeInventoryItem(item, sourceExportedAt));
+    if (items.some((item) => item === null)) {
+      return NextResponse.json({ message: "La carga contiene filas o valores no válidos." }, { status: 400 });
+    }
+    const cleanItems = items as InventoryItem[];
 
     const insforge = await createInsForgeServerClient();
-    const payload = body.items.map((item) => ({
+    const payload = cleanItems.map((item) => ({
       sku: item.sku,
       product_name: item.productName,
       product_line: item.productLine,
@@ -218,9 +263,9 @@ export async function POST(request: Request) {
       "publish_inventory_snapshot",
       {
         items: payload,
-        upload_filename: body.filename,
-        upload_checksum: body.checksum,
-        exported_at: body.sourceExportedAt,
+        upload_filename: filename,
+        upload_checksum: checksum,
+        exported_at: sourceExportedAt,
       },
     );
     if (error) throw error;
@@ -233,8 +278,8 @@ export async function POST(request: Request) {
         displayName: profile.displayName,
       },
       String(data),
-      body.filename,
-      body.items,
+      filename,
+      cleanItems,
     ).catch((caught) => ({
       reorderCount: 0,
       reorderWarning: errorMessage(

@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { requireJsonRequest, requireSameOrigin } from "@/lib/security/request";
+import {
+  isBoolean,
+  parseFiniteNumber,
+  readJsonObject,
+  sanitizeOptionalText,
+  sanitizeText,
+  sanitizeUuid,
+} from "@/lib/security/input";
 
 function errorMessage(error: unknown) {
   return typeof error === "object" &&
@@ -32,21 +40,17 @@ export async function POST(request: Request) {
   const { profile, response } = await requireAdmin();
   if (response) return response;
 
-  const body = (await request.json()) as {
-    sourceId?: number;
-    sku?: string;
-    productName?: string;
-    primarySupplier?: string;
-    secondarySupplier?: string;
-    minimumStock?: number;
-    maximumStock?: number;
-    notes?: string;
-  };
-  const sku = body.sku?.trim();
-  const productName = body.productName?.trim();
-  const primarySupplier = body.primarySupplier?.trim();
-  const minimumStock = Number(body.minimumStock ?? 10);
-  const maximumStock = Number(body.maximumStock ?? 20);
+  const parsed = await readJsonObject(request);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data;
+  const sku = sanitizeText(body.sku, { maxLength: 120 });
+  const productName = sanitizeText(body.productName, { maxLength: 300 });
+  const primarySupplier = sanitizeText(body.primarySupplier, { maxLength: 180 });
+  const secondarySupplier = sanitizeOptionalText(body.secondarySupplier, { maxLength: 180 });
+  const notes = sanitizeOptionalText(body.notes, { maxLength: 2000, multiline: true });
+  const sourceId = body.sourceId == null ? null : parseFiniteNumber(body.sourceId, { integer: true, min: 1, max: 2_147_483_647 });
+  const minimumStock = parseFiniteNumber(body.minimumStock ?? 10, { min: 0, max: 999999 });
+  const maximumStock = parseFiniteNumber(body.maximumStock ?? 20, { min: 0, max: 999999 });
 
   if (!sku || !productName) {
     return NextResponse.json(
@@ -61,11 +65,12 @@ export async function POST(request: Request) {
     );
   }
   if (
-    !Number.isFinite(minimumStock) ||
-    !Number.isFinite(maximumStock) ||
-    minimumStock < 0 ||
+    minimumStock === null ||
+    maximumStock === null ||
     maximumStock < minimumStock ||
-    maximumStock > 999999
+    (body.sourceId != null && sourceId === null) ||
+    (body.secondarySupplier != null && body.secondarySupplier !== "" && secondarySupplier === null) ||
+    (body.notes != null && body.notes !== "" && notes === null)
   ) {
     return NextResponse.json(
       { message: "El máximo debe ser igual o mayor al mínimo." },
@@ -78,16 +83,16 @@ export async function POST(request: Request) {
     .from("reorder_watchlist")
     .insert([
       {
-        source_id: body.sourceId || null,
+        source_id: sourceId,
         sku,
         product_name: productName,
         primary_supplier: primarySupplier,
-        secondary_supplier: body.secondarySupplier?.trim() || null,
+        secondary_supplier: secondarySupplier,
         minimum_stock: minimumStock,
         maximum_stock: maximumStock,
         supplier: primarySupplier,
         reorder_point: minimumStock,
-        notes: body.notes?.trim() || null,
+        notes,
         created_by: profile.id,
         updated_by: profile.id,
       },
@@ -115,19 +120,16 @@ export async function PATCH(request: Request) {
   const { profile, response } = await requireAdmin();
   if (response) return response;
 
-  const body = (await request.json()) as {
-    id?: string;
-    primarySupplier?: string;
-    secondarySupplier?: string;
-    minimumStock?: number;
-    maximumStock?: number;
-    notes?: string;
-    active?: boolean;
-  };
-  const primarySupplier = body.primarySupplier?.trim();
-  const minimumStock = Number(body.minimumStock);
-  const maximumStock = Number(body.maximumStock);
-  if (!body.id) {
+  const parsed = await readJsonObject(request);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data;
+  const id = sanitizeUuid(body.id);
+  const primarySupplier = sanitizeText(body.primarySupplier, { maxLength: 180 });
+  const secondarySupplier = sanitizeOptionalText(body.secondarySupplier, { maxLength: 180 });
+  const notes = sanitizeOptionalText(body.notes, { maxLength: 2000, multiline: true });
+  const minimumStock = parseFiniteNumber(body.minimumStock, { min: 0, max: 999999 });
+  const maximumStock = parseFiniteNumber(body.maximumStock, { min: 0, max: 999999 });
+  if (!id) {
     return NextResponse.json({ message: "Falta el identificador." }, { status: 400 });
   }
   if (!primarySupplier) {
@@ -137,11 +139,12 @@ export async function PATCH(request: Request) {
     );
   }
   if (
-    !Number.isFinite(minimumStock) ||
-    !Number.isFinite(maximumStock) ||
-    minimumStock < 0 ||
+    minimumStock === null ||
+    maximumStock === null ||
     maximumStock < minimumStock ||
-    maximumStock > 999999
+    (body.secondarySupplier != null && body.secondarySupplier !== "" && secondarySupplier === null) ||
+    (body.notes != null && body.notes !== "" && notes === null) ||
+    (body.active != null && !isBoolean(body.active))
   ) {
     return NextResponse.json(
       { message: "El máximo debe ser igual o mayor al mínimo." },
@@ -154,16 +157,16 @@ export async function PATCH(request: Request) {
     .from("reorder_watchlist")
     .update({
       primary_supplier: primarySupplier,
-      secondary_supplier: body.secondarySupplier?.trim() || null,
+      secondary_supplier: secondarySupplier,
       minimum_stock: minimumStock,
       maximum_stock: maximumStock,
       supplier: primarySupplier,
       reorder_point: minimumStock,
-      notes: body.notes?.trim() || null,
-      active: body.active ?? true,
+      notes,
+      active: isBoolean(body.active) ? body.active : true,
       updated_by: profile.id,
     })
-    .eq("id", body.id);
+    .eq("id", id);
 
   if (error) {
     return NextResponse.json({ message: errorMessage(error) }, { status: 400 });
@@ -177,7 +180,7 @@ export async function DELETE(request: Request) {
   const { response } = await requireAdmin();
   if (response) return response;
 
-  const id = new URL(request.url).searchParams.get("id");
+  const id = sanitizeUuid(new URL(request.url).searchParams.get("id"));
   if (!id) {
     return NextResponse.json({ message: "Falta el identificador." }, { status: 400 });
   }

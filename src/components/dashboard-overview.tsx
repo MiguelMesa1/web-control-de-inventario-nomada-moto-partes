@@ -32,8 +32,9 @@ import {
 import { historySnapshotToInventory } from "@/lib/inventory/history";
 import { isPriorityProductLine } from "@/lib/inventory/priority-lines";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
+import { excludeActiveOrderRows } from "@/lib/orders/active-orders";
 import { cn } from "@/lib/utils";
-import type { InventoryData } from "@/types/inventory";
+import type { DashboardPageData } from "@/types/inventory";
 
 const number = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
@@ -45,7 +46,7 @@ const dateTime = new Intl.DateTimeFormat("es-CO", {
   timeZone: "America/Bogota",
 });
 
-export function DashboardOverview({ data }: { data: InventoryData }) {
+export function DashboardOverview({ data }: { data: DashboardPageData }) {
   const previous = historySnapshotToInventory(data.history, data.current);
   const summary = inventorySummary(data.current, data.lowStockThreshold);
   const lines = aggregateLineMetrics(
@@ -56,17 +57,21 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
   const priorityLines = lines.filter((line) =>
     isPriorityProductLine(line.line),
   );
-  const reorderPriorities = buildReorderAlertRows(
+  const reorderRows = buildReorderAlertRows(
     data.reorderWatchlist.filter((item) => item.active),
     data.current,
+  ).filter((item) => item.status !== "healthy");
+  const activeOrderSkus = new Set(data.activeOrderSkus);
+  const activeReorderCount = reorderRows.filter((item) =>
+    activeOrderSkus.has(item.sku),
+  ).length;
+  const reorderPriorities = excludeActiveOrderRows(
+    reorderRows,
+    data.activeOrderSkus,
   )
-    .filter(
-      (item) =>
-        item.hasInventoryRecord &&
-        (item.status === "exhausted" || item.status === "low"),
-    )
     .sort(
       (a, b) =>
+        (a.hasInventoryRecord ? 0 : 1) - (b.hasInventoryRecord ? 0 : 1) ||
         a.available - b.available ||
         b.suggestedQuantity - a.suggestedQuantity ||
         a.productName.localeCompare(b.productName, "es"),
@@ -198,7 +203,7 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
               Prioridad de recompra
             </CardTitle>
             <CardDescription className="mt-1">
-              Productos que llegaron a su mínimo, ordenados por disponibilidad.
+              Productos en el mínimo o ausentes de la última carga, sin pedidos activos.
             </CardDescription>
           </div>
           <Button asChild variant="outline" size="sm">
@@ -214,9 +219,9 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
               {reorderPriorities.map((item, index) => (
                 <li key={item.id}>
                   <Link
-                    href={`/inventory?sku=${encodeURIComponent(item.sku)}`}
+                    href={`${item.status === "missing" ? "/reorder" : "/inventory"}?sku=${encodeURIComponent(item.sku)}`}
                     className="grid min-h-16 cursor-pointer grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-3 transition-colors hover:border-primary/60 hover:bg-muted/40 md:grid-cols-[2rem_minmax(0,1fr)_minmax(8rem,0.5fr)_6rem_6rem_auto] md:px-4"
-                    aria-label={`${index + 1}. ${item.productName}, ${number.format(item.available)} disponibles`}
+                    aria-label={`${index + 1}. ${item.productName}, ${item.hasInventoryRecord ? `${number.format(item.available)} disponibles` : "sin registro en la última carga"}`}
                   >
                     <span className="grid size-8 place-items-center rounded-lg bg-primary/15 text-sm font-bold tabular-nums">
                       {index + 1}
@@ -230,12 +235,14 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
                       </span>
                     </span>
                     <Badge
-                      variant={
-                        item.status === "exhausted" ? "destructive" : "default"
-                      }
+                      variant={item.status === "exhausted" ? "destructive" : item.status === "missing" ? "outline" : "default"}
                       className="justify-self-end md:order-last"
                     >
-                      {item.status === "exhausted" ? "Agotado" : "Por solicitar"}
+                      {item.status === "missing"
+                        ? "Sin registro"
+                        : item.status === "exhausted"
+                          ? "Agotado"
+                          : "Por solicitar"}
                     </Badge>
                     <span className="hidden truncate text-sm text-muted-foreground md:block">
                       {item.productLine ?? "Sin línea"}
@@ -245,7 +252,7 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
                         Disponible
                       </span>
                       <span className="mt-1 block font-bold tabular-nums">
-                        {number.format(item.available)}
+                        {item.hasInventoryRecord ? number.format(item.available) : "—"}
                       </span>
                     </span>
                     <span className="hidden text-right md:block">
@@ -260,7 +267,7 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
                       <span>
                         Disponible:{" "}
                         <strong className="text-foreground">
-                          {number.format(item.available)}
+                          {item.hasInventoryRecord ? number.format(item.available) : "—"}
                         </strong>
                       </span>
                       <span>
@@ -282,10 +289,14 @@ export function DashboardOverview({ data }: { data: InventoryData }) {
                   aria-hidden="true"
                 />
                 <p className="mt-3 font-semibold">
-                  No hay productos por solicitar
+                  {activeReorderCount > 0
+                    ? "Lo pendiente ya está en pedidos"
+                    : "No hay productos por solicitar"}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Los productos vigilados están por encima de su mínimo.
+                  {activeReorderCount > 0
+                    ? `${activeReorderCount} ${activeReorderCount === 1 ? "producto está" : "productos están"} esperando confirmación o llegada.`
+                    : "Los productos vigilados están por encima de su mínimo."}
                 </p>
               </div>
             </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { requireJsonRequest } from "@/lib/security/request";
+import { readJsonObject, sanitizeOptionalText, sanitizeText } from "@/lib/security/input";
 
 export async function POST(request: Request) {
   const requestError = requireJsonRequest(request);
@@ -13,13 +14,13 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
-  const body = (await request.json()) as {
-    filename?: string;
-    sourceExportedAt?: string;
-    errorCode?: string;
-    errorMessage?: string;
-  };
-  if (!body.filename || !body.errorMessage) {
+  const parsed = await readJsonObject(request);
+  if (parsed.error) return parsed.error;
+  const filename = sanitizeText(parsed.data.filename, { maxLength: 255 });
+  const sourceExportedAt = sanitizeOptionalText(parsed.data.sourceExportedAt, { maxLength: 40 });
+  const errorCode = sanitizeOptionalText(parsed.data.errorCode, { maxLength: 80 }) ?? "validation_error";
+  const errorMessage = sanitizeText(parsed.data.errorMessage, { maxLength: 2000, multiline: true });
+  if (!filename || !errorMessage || (parsed.data.sourceExportedAt != null && parsed.data.sourceExportedAt !== "" && !sourceExportedAt)) {
     return NextResponse.json(
       { message: "El registro de error está incompleto." },
       { status: 400 },
@@ -27,10 +28,10 @@ export async function POST(request: Request) {
   }
   const insforge = await createInsForgeServerClient();
   const { data, error } = await insforge.database.rpc("record_failed_import", {
-    p_filename: body.filename,
-    p_source_exported_at: body.sourceExportedAt ?? null,
-    p_error_code: body.errorCode ?? "validation_error",
-    p_error_message: body.errorMessage,
+    p_filename: filename,
+    p_source_exported_at: sourceExportedAt,
+    p_error_code: errorCode,
+    p_error_message: errorMessage,
   });
   if (error) {
     return NextResponse.json({ message: error.message }, { status: 400 });

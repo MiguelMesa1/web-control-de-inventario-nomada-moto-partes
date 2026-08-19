@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   History,
   LoaderCircle,
   PackagePlus,
@@ -67,8 +68,13 @@ import {
 } from "@/components/ui/table";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
 import { normalizeInventoryText } from "@/lib/inventory/priority-lines";
+import {
+  buildActiveOrderBySku,
+  type ActiveOrderSummary,
+} from "@/lib/orders/active-orders";
 import type {
   ProductHistorySubject,
+  PurchaseOrder,
   ReorderAlertRow,
   ReorderWatchItem,
 } from "@/types/inventory";
@@ -97,11 +103,44 @@ const emptyForm: FormState = {
   notes: "",
 };
 
-function statusBadge(row: ReorderAlertRow) {
+function statusBadge(
+  row: ReorderAlertRow,
+  activeOrder?: ActiveOrderSummary,
+) {
+  if (activeOrder?.status === "ordered") {
+    return (
+      <Badge variant="outline" className="gap-1 border-chart-2/45 bg-chart-2/10">
+        <Truck className="size-3" aria-hidden="true" />
+        Pedido en curso
+      </Badge>
+    );
+  }
+  if (activeOrder?.status === "draft") {
+    return (
+      <Badge variant="outline" className="gap-1 border-primary/60 bg-primary/10">
+        <ClipboardCheck className="size-3" aria-hidden="true" />
+        En borrador
+      </Badge>
+    );
+  }
   if (row.status === "missing") return <Badge variant="outline">Sin registro</Badge>;
   if (row.status === "exhausted") return <Badge variant="destructive">Agotado</Badge>;
   if (row.status === "low") return <Badge>Por reponer</Badge>;
   return <Badge variant="secondary">Nivel estable</Badge>;
+}
+
+function ActiveOrderDetails({ order }: { order: ActiveOrderSummary }) {
+  return (
+    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+      <p>
+        <span className="font-semibold text-foreground">
+          {number.format(order.quantity)} {order.quantity === 1 ? "unidad" : "unidades"}
+        </span>{" "}
+        con {order.supplierNames.join(", ")}
+      </p>
+      <p>{order.orderNumbers.join(" · ")}</p>
+    </div>
+  );
 }
 
 function ReplenishmentLevels({ row }: { row: ReorderAlertRow }) {
@@ -125,12 +164,18 @@ function ReplenishmentLevels({ row }: { row: ReorderAlertRow }) {
   );
 }
 
-export function ReorderWatchlist() {
+export function ReorderWatchlist({
+  purchaseOrders,
+  initialQuery = "",
+}: {
+  purchaseOrders: PurchaseOrder[];
+  initialQuery?: string;
+}) {
   const router = useRouter();
   const { current, reorderWatchlist, isDemo } = useInventoryData();
   const profile = useProfile();
   const isAdmin = profile.role === "admin";
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState("attention");
   const [supplier, setSupplier] = useState("all");
   const [page, setPage] = useState(1);
@@ -155,6 +200,11 @@ export function ReorderWatchlist() {
           a.productName.localeCompare(b.productName, "es"),
       ),
     [current, reorderWatchlist],
+  );
+
+  const activeOrderBySku = useMemo(
+    () => buildActiveOrderBySku(purchaseOrders),
+    [purchaseOrders],
   );
 
   const supplierOptions = useMemo(
@@ -195,6 +245,8 @@ export function ReorderWatchlist() {
       const matchesStatus =
         status === "all" ||
         (status === "attention" && row.status !== "healthy") ||
+        (status === "in-progress" &&
+          activeOrderBySku.get(row.sku)?.status === "ordered") ||
         row.status === status;
       const matchesSupplier =
         supplier === "all" ||
@@ -202,7 +254,7 @@ export function ReorderWatchlist() {
         row.secondarySupplier === supplier;
       return matchesQuery && matchesStatus && matchesSupplier;
     });
-  }, [deferredQuery, rows, status, supplier]);
+  }, [activeOrderBySku, deferredQuery, rows, status, supplier]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pageCount);
@@ -211,11 +263,18 @@ export function ReorderWatchlist() {
   const lastVisible = Math.min(safePage * pageSize, filtered.length);
   const metrics = {
     monitored: rows.length,
-    attention: rows.filter((row) => row.status !== "healthy").length,
+    attention: rows.filter(
+      (row) => row.status !== "healthy" && !activeOrderBySku.has(row.sku),
+    ).length,
     exhausted: rows.filter((row) => row.status === "exhausted").length,
+    inProgress: rows.filter(
+      (row) => activeOrderBySku.get(row.sku)?.status === "ordered",
+    ).length,
     suggested: rows.reduce(
       (total, row) =>
-        row.status === "healthy" ? total : total + row.suggestedQuantity,
+        row.status === "healthy" || activeOrderBySku.has(row.sku)
+          ? total
+          : total + row.suggestedQuantity,
       0,
     ),
   };
@@ -357,19 +416,37 @@ export function ReorderWatchlist() {
       {metrics.attention > 0 ? (
         <Alert className="border-primary/60 bg-primary/10">
           <AlertTriangle aria-hidden="true" />
-          <AlertTitle>{metrics.attention} productos necesitan revisión</AlertTitle>
+          <AlertTitle>
+            {metrics.attention} {metrics.attention === 1 ? "producto pendiente" : "productos pendientes"} por pedir
+          </AlertTitle>
           <AlertDescription>
             Para completar sus máximos se sugieren {number.format(metrics.suggested)} unidades.
           </AlertDescription>
         </Alert>
       ) : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen de recompra">
+      {metrics.inProgress > 0 ? (
+        <Alert className="border-chart-2/40 bg-chart-2/10">
+          <Truck aria-hidden="true" />
+          <AlertTitle>
+            {metrics.inProgress} {metrics.inProgress === 1 ? "producto tiene" : "productos tienen"} un pedido en curso
+          </AlertTitle>
+          <AlertDescription>
+            Ya están solicitados y no se incluyen nuevamente en las unidades por pedir.{' '}
+            <Link href="/orders" className="font-semibold underline underline-offset-4">
+              Ver seguimiento
+            </Link>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Resumen de recompra">
         {[
           ["Productos configurados", metrics.monitored],
-          ["Por revisar", metrics.attention],
+          ["Pendientes por pedir", metrics.attention],
           ["Agotados", metrics.exhausted],
-          ["Unidades sugeridas", metrics.suggested],
+          ["Pedidos en curso", metrics.inProgress],
+          ["Unidades por pedir", metrics.suggested],
         ].map(([label, value]) => (
           <Card key={label}>
             <CardHeader>
@@ -424,7 +501,8 @@ export function ReorderWatchlist() {
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="attention">Necesitan atención</SelectItem>
+                  <SelectItem value="attention">Por debajo del mínimo</SelectItem>
+                  <SelectItem value="in-progress">Pedidos en curso</SelectItem>
                   <SelectItem value="low">Necesitan reposición</SelectItem>
                   <SelectItem value="exhausted">Agotados</SelectItem>
                   <SelectItem value="missing">Sin registro</SelectItem>
@@ -487,8 +565,27 @@ export function ReorderWatchlist() {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{number.format(row.minimumStock)}</TableCell>
                     <TableCell className="text-right tabular-nums">{number.format(row.maximumStock)}</TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">{number.format(row.suggestedQuantity)}</TableCell>
-                    <TableCell>{statusBadge(row)}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">
+                      {activeOrderBySku.has(row.sku)
+                        ? "—"
+                        : number.format(row.suggestedQuantity)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="min-w-44">
+                        {statusBadge(row, activeOrderBySku.get(row.sku))}
+                        {activeOrderBySku.has(row.sku) ? (
+                          <>
+                            <ActiveOrderDetails order={activeOrderBySku.get(row.sku)!} />
+                            <Link
+                              href="/orders"
+                              className="mt-2 inline-flex min-h-8 items-center font-semibold text-foreground underline decoration-primary decoration-2 underline-offset-4"
+                            >
+                              Ver seguimiento
+                            </Link>
+                          </>
+                        ) : null}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
                         {historySubjects.has(row.sku) ? (
@@ -534,18 +631,40 @@ export function ReorderWatchlist() {
                       <CardTitle className="text-base leading-snug">{row.productName}</CardTitle>
                       <CardDescription className="mt-1">{row.sku}</CardDescription>
                     </div>
-                    {statusBadge(row)}
+                    {statusBadge(row, activeOrderBySku.get(row.sku))}
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   <ReplenishmentLevels row={row} />
+                  {activeOrderBySku.has(row.sku) ? (
+                    <div className="rounded-xl border border-chart-2/40 bg-chart-2/10 p-3">
+                      <p className="flex items-center gap-2 font-semibold">
+                        <Truck className="size-4 text-chart-2" aria-hidden="true" />
+                        {activeOrderBySku.get(row.sku)?.status === "ordered"
+                          ? "Este producto ya fue solicitado"
+                          : "Este producto ya está en un borrador"}
+                      </p>
+                      <ActiveOrderDetails order={activeOrderBySku.get(row.sku)!} />
+                      <Button asChild variant="outline" className="mt-3 min-h-11 w-full bg-background">
+                        <Link href="/orders">Ver seguimiento</Link>
+                      </Button>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
                     <div>
                       <p className="text-xs text-muted-foreground">Proveedor principal</p>
                       <p className="font-semibold">{row.primarySupplier ?? "Sin proveedor"}</p>
                       {row.secondarySupplier ? <p className="text-xs text-muted-foreground">Alterno: {row.secondarySupplier}</p> : null}
                     </div>
-                    <Badge variant="outline">Comprar {number.format(row.suggestedQuantity)}</Badge>
+                    {activeOrderBySku.has(row.sku) ? (
+                      <Badge variant="outline">
+                        {activeOrderBySku.get(row.sku)?.status === "ordered"
+                          ? `${number.format(activeOrderBySku.get(row.sku)!.quantity)} en camino`
+                          : "En borrador"}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Comprar {number.format(row.suggestedQuantity)}</Badge>
+                    )}
                   </div>
                 </CardContent>
                 <CardFooter className="flex-wrap gap-2">

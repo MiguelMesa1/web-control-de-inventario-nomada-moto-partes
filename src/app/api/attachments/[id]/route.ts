@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { requireSameOrigin } from "@/lib/security/request";
+import { sanitizeUuid } from "@/lib/security/input";
 
 type AttachmentRow = {
   id: string;
@@ -34,6 +35,9 @@ export async function GET(
     );
   }
   const { id } = await context.params;
+  if (!sanitizeUuid(id)) {
+    return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
+  }
   const { insforge, attachment } = await getAttachment(id);
   if (!attachment) {
     return NextResponse.json({ message: "Documento no encontrado." }, { status: 404 });
@@ -70,6 +74,9 @@ export async function DELETE(
     );
   }
   const { id } = await context.params;
+  if (!sanitizeUuid(id)) {
+    return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
+  }
   const { insforge, attachment } = await getAttachment(id);
   if (!attachment) {
     return NextResponse.json({ message: "Documento no encontrado." }, { status: 404 });

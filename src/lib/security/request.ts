@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAllowedAppOrigin } from "./headers";
 
 const JSON_CONTENT_TYPE = "application/json";
 
@@ -7,7 +8,7 @@ function hasAllowedOrigin(request: Request) {
   if (!origin) return false;
 
   try {
-    return new URL(origin).origin === new URL(request.url).origin;
+    return isAllowedAppOrigin(origin, new URL(request.url).origin);
   } catch {
     return false;
   }
@@ -21,6 +22,13 @@ function isWithinContentLength(request: Request, maxBytes: number) {
 }
 
 export function requireSameOrigin(request: Request) {
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite === "cross-site" || fetchSite === "same-site") {
+    return NextResponse.json(
+      { message: "Origen de solicitud no permitido." },
+      { status: 403 },
+    );
+  }
   if (hasAllowedOrigin(request)) return null;
   return NextResponse.json(
     { message: "Origen de solicitud no permitido." },

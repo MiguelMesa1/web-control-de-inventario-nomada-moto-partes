@@ -6,6 +6,13 @@
   "engines": {
     "node": "22.x"
   },
+  "pnpm": {
+    "overrides": {
+      "nanoid@<3.3.18": "3.3.18",
+      "postcss@<8.5.23": "8.5.23",
+      "sharp@<0.35.0": "0.35.3"
+    }
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -33,6 +40,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.27.0",
     "next": "^16.2.12",
     "next-themes": "^0.4.6",

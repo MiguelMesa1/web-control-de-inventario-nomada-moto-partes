@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { requireJsonRequest } from "@/lib/security/request";
+import { parseFiniteNumber, readJsonObject } from "@/lib/security/input";
 
 export async function PATCH(request: Request) {
   const requestError = requireJsonRequest(request);
@@ -10,9 +11,10 @@ export async function PATCH(request: Request) {
   if (profile.role !== "admin") {
     return NextResponse.json({ message: "Solo un administrador puede cambiar esta regla." }, { status: 403 });
   }
-  const body = (await request.json()) as { lowStockThreshold?: number };
-  const threshold = Number(body.lowStockThreshold);
-  if (!Number.isInteger(threshold) || threshold < 0 || threshold > 9999) {
+  const parsed = await readJsonObject(request);
+  if (parsed.error) return parsed.error;
+  const threshold = parseFiniteNumber(parsed.data.lowStockThreshold, { integer: true, min: 0, max: 9999 });
+  if (threshold === null) {
     return NextResponse.json({ message: "El umbral debe estar entre 0 y 9.999." }, { status: 400 });
   }
   const insforge = await createInsForgeServerClient();

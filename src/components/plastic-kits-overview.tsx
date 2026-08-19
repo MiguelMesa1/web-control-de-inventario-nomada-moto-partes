@@ -586,7 +586,12 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                     <div className="border-b px-4 pb-4 pt-5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <Badge variant="secondary" className="bg-background/55">{getPlasticKitModel(kit)}</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="border border-foreground/15 bg-background/80 text-foreground shadow-sm backdrop-blur-sm dark:border-transparent dark:bg-secondary dark:text-secondary-foreground dark:shadow-none dark:backdrop-blur-none"
+                          >
+                            {getPlasticKitModel(kit)}
+                          </Badge>
                           <Badge variant="outline" className="gap-1.5 bg-background/45">
                             <span className="plastic-kit-color-dot" aria-hidden="true" />
                             {kit.color}

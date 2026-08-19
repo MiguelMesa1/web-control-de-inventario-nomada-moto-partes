@@ -4,6 +4,7 @@ import { isInsForgeConfigured } from "@/lib/insforge/config";
 import { loadAllPages } from "@/lib/inventory/pagination";
 import type {
   ImportRun,
+  DashboardPageData,
   InventoryData,
   InventoryHistoryPoint,
   InventoryItem,
@@ -11,9 +12,14 @@ import type {
   OrdersPageData,
   PurchaseOrder,
   PurchaseOrderItem,
+  PurchaseOrderStatus,
+  PurchaseOrderStatusCounts,
+  PurchaseOrdersPageInfo,
+  ReorderPageData,
   ReorderLineSetting,
   ReorderWatchItem,
 } from "@/types/inventory";
+import { loadActiveOrderSkus } from "@/lib/orders/active-order-data";
 
 type InsForgeServerClient = Awaited<
   ReturnType<typeof createAuthenticatedInsForgeServerClient>
@@ -38,6 +44,16 @@ type DbHistoryPoint = {
   warehouse: string;
   available: number | string;
   recorded_at: string;
+};
+
+type DbPurchaseOrder = {
+  id: string;
+  order_number: string;
+  supplier_name: string;
+  status: PurchaseOrderStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 const mapInventoryItem = (item: DbInventoryItem): InventoryItem => ({
@@ -234,33 +250,136 @@ async function loadReorderWatchlist(
   );
 }
 
+type LoadedPurchaseOrders = {
+  orders: PurchaseOrder[];
+  page: PurchaseOrdersPageInfo;
+};
+
+const emptyPurchaseOrderCounts = (): PurchaseOrderStatusCounts => ({
+  draft: 0,
+  ordered: 0,
+  received: 0,
+  cancelled: 0,
+});
+
+async function loadPurchaseOrderStatusCounts(
+  insforge: InsForgeServerClient,
+): Promise<PurchaseOrderStatusCounts> {
+  const statuses: PurchaseOrderStatus[] = [
+    "draft",
+    "ordered",
+    "received",
+    "cancelled",
+  ];
+  const entries = await Promise.all(
+    statuses.map(async (status) => {
+      const result = await insforge.database
+        .from("purchase_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+      if (result.error) throw new Error(result.error.message);
+      return [status, result.count ?? 0] as const;
+    }),
+  );
+  return Object.fromEntries(entries) as PurchaseOrderStatusCounts;
+}
+
 async function loadPurchaseOrders(
   insforge: InsForgeServerClient,
-  limit = 60,
-): Promise<PurchaseOrder[]> {
-  const ordersResult = await insforge.database
-    .from("purchase_orders")
-    .select(
-      "id,order_number,supplier_name,status,notes,created_at,updated_at",
-    )
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (ordersResult.error) throw new Error(ordersResult.error.message);
+  options: {
+    limit?: number;
+    offset?: number;
+    activeOnly?: boolean;
+    includeAllActive?: boolean;
+    snapshotBefore?: string;
+  } = {},
+): Promise<LoadedPurchaseOrders> {
+  const {
+    limit = 30,
+    offset = 0,
+    activeOnly = false,
+    includeAllActive = false,
+    snapshotBefore = new Date().toISOString(),
+  } = options;
+  const orderFields =
+    "id,order_number,supplier_name,status,notes,created_at,updated_at";
+  const loadActiveOrders = () =>
+    loadAllPages<DbPurchaseOrder>((from, to) =>
+      insforge.database
+        .from("purchase_orders")
+        .select(orderFields)
+        .in("status", ["draft", "ordered"])
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    );
+  const queryRecentOrders = () =>
+    insforge.database
+      .from("purchase_orders")
+      .select(orderFields)
+      .lte("created_at", snapshotBefore)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + limit);
+  const [recentOrdersResult, activeOrders] = activeOnly
+    ? [null, await loadActiveOrders()]
+    : includeAllActive
+      ? await Promise.all([queryRecentOrders(), loadActiveOrders()])
+      : [await queryRecentOrders(), []];
+  if (recentOrdersResult?.error) throw new Error(recentOrdersResult.error.message);
 
-  const orderIds = (ordersResult.data ?? []).map((order) => String(order.id));
-  if (!orderIds.length) return [];
+  const recentOrders = (recentOrdersResult?.data ?? []).slice(0, limit);
+  const hasMore = (recentOrdersResult?.data?.length ?? 0) > limit;
 
-  const itemsResult = await insforge.database
-    .from("purchase_order_items")
-    .select(
-      "id,order_id,sku,product_name,quantity,available_at_creation,minimum_stock,maximum_stock,created_at",
-    )
-    .in("order_id", orderIds)
-    .order("product_name");
-  if (itemsResult.error) throw new Error(itemsResult.error.message);
+  const ordersById = new Map(
+    [...recentOrders, ...activeOrders].map(
+      (order) => [String(order.id), order],
+    ),
+  );
+  const orders = [...ordersById.values()].sort(
+      (a, b) =>
+        new Date(String(b.created_at)).getTime() -
+        new Date(String(a.created_at)).getTime(),
+  );
+
+  const orderIds = orders.map((order) => String(order.id));
+  if (!orderIds.length) {
+    return {
+      orders: [],
+      page: { hasMore, nextOffset: offset + limit, snapshotBefore },
+    };
+  }
+
+  type DbPurchaseOrderItem = {
+    id: string;
+    order_id: string;
+    sku: string;
+    product_name: string;
+    quantity: number | string;
+    available_at_creation: number | string;
+    minimum_stock: number | string;
+    maximum_stock: number | string;
+    created_at: string;
+  };
+  const purchaseOrderItems: DbPurchaseOrderItem[] = [];
+  for (let index = 0; index < orderIds.length; index += 200) {
+    const orderIdBatch = orderIds.slice(index, index + 200);
+    const batch = await loadAllPages<DbPurchaseOrderItem>((from, to) =>
+      insforge.database
+        .from("purchase_order_items")
+        .select(
+          "id,order_id,sku,product_name,quantity,available_at_creation,minimum_stock,maximum_stock,created_at",
+        )
+        .in("order_id", orderIdBatch)
+        .order("product_name")
+        .order("id")
+        .range(from, to),
+    );
+    purchaseOrderItems.push(...batch);
+  }
 
   const itemsByOrder = new Map<string, PurchaseOrderItem[]>();
-  for (const item of itemsResult.data ?? []) {
+  for (const item of purchaseOrderItems) {
     const orderId = String(item.order_id);
     const mapped: PurchaseOrderItem = {
       id: String(item.id),
@@ -276,18 +395,21 @@ async function loadPurchaseOrders(
     itemsByOrder.set(orderId, [...(itemsByOrder.get(orderId) ?? []), mapped]);
   }
 
-  return (ordersResult.data ?? []).map(
-    (order): PurchaseOrder => ({
-      id: String(order.id),
-      orderNumber: String(order.order_number),
-      supplierName: String(order.supplier_name),
-      status: order.status as PurchaseOrder["status"],
-      notes: order.notes ? String(order.notes) : undefined,
-      createdAt: String(order.created_at),
-      updatedAt: String(order.updated_at),
-      items: itemsByOrder.get(String(order.id)) ?? [],
-    }),
-  );
+  return {
+    orders: orders.map(
+      (order): PurchaseOrder => ({
+        id: String(order.id),
+        orderNumber: String(order.order_number),
+        supplierName: String(order.supplier_name),
+        status: order.status as PurchaseOrder["status"],
+        notes: order.notes ? String(order.notes) : undefined,
+        createdAt: String(order.created_at),
+        updatedAt: String(order.updated_at),
+        items: itemsByOrder.get(String(order.id)) ?? [],
+      }),
+    ),
+    page: { hasMore, nextOffset: offset + limit, snapshotBefore },
+  };
 }
 
 async function loadReorderLineSettings(
@@ -307,8 +429,10 @@ async function loadReorderLineSettings(
   );
 }
 
-export async function loadDashboardData(): Promise<InventoryData> {
-  if (!isInsForgeConfigured()) return demoInventoryData;
+export async function loadDashboardData(): Promise<DashboardPageData> {
+  if (!isInsForgeConfigured()) {
+    return { ...demoInventoryData, activeOrderSkus: [] };
+  }
 
   const insforge = await createAuthenticatedInsForgeServerClient();
   const [
@@ -317,12 +441,14 @@ export async function loadDashboardData(): Promise<InventoryData> {
     importRuns,
     lowStockThreshold,
     reorderWatchlist,
+    activeOrderSkus,
   ] = await Promise.all([
     loadCurrent(insforge),
     loadSnapshots(insforge, 3),
     loadImportRuns(insforge, 4),
     loadLowStockThreshold(insforge),
     loadReorderWatchlist(insforge),
+    loadActiveOrderSkus(insforge),
   ]);
 
   const currentSnapshotId = current[0]?.snapshotId;
@@ -333,14 +459,17 @@ export async function loadDashboardData(): Promise<InventoryData> {
     ? await loadHistorySnapshot(insforge, previousSnapshot.id)
     : [];
 
-  return emptyInventoryData({
-    current,
-    history,
-    snapshots,
-    importRuns,
-    reorderWatchlist,
-    lowStockThreshold,
-  });
+  return {
+    ...emptyInventoryData({
+      current,
+      history,
+      snapshots,
+      importRuns,
+      reorderWatchlist,
+      lowStockThreshold,
+    }),
+    activeOrderSkus,
+  };
 }
 
 export async function loadInventoryPageData(): Promise<InventoryData> {
@@ -381,26 +510,39 @@ export async function loadLinesPageData(): Promise<InventoryData> {
   });
 }
 
-export async function loadReorderPageData(): Promise<InventoryData> {
-  if (!isInsForgeConfigured()) return demoInventoryData;
+export async function loadReorderPageData(): Promise<ReorderPageData> {
+  if (!isInsForgeConfigured()) {
+    return { ...demoInventoryData, purchaseOrders: [] };
+  }
 
   const insforge = await createAuthenticatedInsForgeServerClient();
-  const [current, reorderWatchlist] = await Promise.all([
+  const [current, reorderWatchlist, purchaseOrderResult] = await Promise.all([
     loadCurrent(insforge),
     loadReorderWatchlist(insforge),
+    loadPurchaseOrders(insforge, { activeOnly: true }),
   ]);
-  return emptyInventoryData({
-    current,
-    reorderWatchlist,
-  });
+  return {
+    ...emptyInventoryData({ current, reorderWatchlist }),
+    purchaseOrders: purchaseOrderResult.orders,
+  };
 }
 
 export async function loadReorderAlertData() {
-  const data = await loadReorderPageData();
-  return {
-    current: data.current,
-    reorderWatchlist: data.reorderWatchlist,
-  };
+  if (!isInsForgeConfigured()) {
+    return {
+      current: demoInventoryData.current,
+      reorderWatchlist: demoInventoryData.reorderWatchlist,
+      activeOrderSkus: [],
+    };
+  }
+
+  const insforge = await createAuthenticatedInsForgeServerClient();
+  const [current, reorderWatchlist, activeOrderSkus] = await Promise.all([
+    loadCurrent(insforge),
+    loadReorderWatchlist(insforge),
+    loadActiveOrderSkus(insforge),
+  ]);
+  return { current, reorderWatchlist, activeOrderSkus };
 }
 
 export async function loadOrdersPageData(): Promise<OrdersPageData> {
@@ -409,17 +551,45 @@ export async function loadOrdersPageData(): Promise<OrdersPageData> {
       current: demoInventoryData.current,
       reorderWatchlist: demoInventoryData.reorderWatchlist,
       purchaseOrders: [],
+      purchaseOrdersPage: {
+        hasMore: false,
+        nextOffset: 0,
+        snapshotBefore: new Date().toISOString(),
+      },
+      purchaseOrderCounts: emptyPurchaseOrderCounts(),
       isDemo: true,
     };
   }
 
   const insforge = await createAuthenticatedInsForgeServerClient();
-  const [current, reorderWatchlist, purchaseOrders] = await Promise.all([
+  const [
+    current,
+    reorderWatchlist,
+    purchaseOrderResult,
+    purchaseOrderCounts,
+  ] = await Promise.all([
     loadCurrent(insforge),
     loadReorderWatchlist(insforge),
-    loadPurchaseOrders(insforge),
+    loadPurchaseOrders(insforge, { includeAllActive: true }),
+    loadPurchaseOrderStatusCounts(insforge),
   ]);
-  return { current, reorderWatchlist, purchaseOrders, isDemo: false };
+  return {
+    current,
+    reorderWatchlist,
+    purchaseOrders: purchaseOrderResult.orders,
+    purchaseOrdersPage: purchaseOrderResult.page,
+    purchaseOrderCounts,
+    isDemo: false,
+  };
+}
+
+export async function loadPurchaseOrderHistoryPage(
+  offset: number,
+  limit = 30,
+  snapshotBefore = new Date().toISOString(),
+) {
+  const insforge = await createAuthenticatedInsForgeServerClient();
+  return loadPurchaseOrders(insforge, { offset, limit, snapshotBefore });
 }
 
 export async function loadInventoryData(): Promise<InventoryData> {

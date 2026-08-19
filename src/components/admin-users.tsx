@@ -168,7 +168,19 @@ export function AdminUsers({
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="password">Contraseña inicial</Label>
-                    <Input id="password" name="password" type="password" required minLength={8} />
+                    <Input
+                      id="password"
+                      name="password"
+                      type="password"
+                      required
+                      minLength={12}
+                      maxLength={128}
+                      pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,128}"
+                      aria-describedby="password-rules"
+                    />
+                    <p id="password-rules" className="text-xs text-muted-foreground">
+                      Mínimo 12 caracteres con mayúscula, minúscula, número y símbolo.
+                    </p>
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="role">Permiso</Label>
