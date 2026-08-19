@@ -3,6 +3,7 @@
 import {
   ArrowRight,
   CircleAlert,
+  History,
   Layers3,
   PackageCheck,
   PackageX,
@@ -10,6 +11,7 @@ import {
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
+import { ProductHistorySheet } from "@/components/product-history-sheet";
 import { useInventoryData } from "@/components/providers/inventory-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,7 @@ import {
 } from "@/lib/inventory/priority-lines";
 import { getReorderPointForLine } from "@/lib/inventory/reorder";
 import { cn } from "@/lib/utils";
+import type { ProductHistorySubject } from "@/types/inventory";
 
 const number = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
@@ -92,6 +95,9 @@ export function LinesOverview() {
   );
   const [selectedLine, setSelectedLine] = useState(
     availablePriorityLines[0] ?? PRIORITY_PRODUCT_LINES[0],
+  );
+  const [historyTarget, setHistoryTarget] = useState<ProductHistorySubject | null>(
+    null,
   );
 
   const lineGroups = useMemo(
@@ -240,6 +246,7 @@ export function LinesOverview() {
                     <TableHead>Producto</TableHead>
                     <TableHead className="text-right">Disponible</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Historial</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -256,6 +263,18 @@ export function LinesOverview() {
                       </TableCell>
                       <TableCell>
                         <LevelBadge level={item.level} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setHistoryTarget(item)}
+                          aria-label={`Ver historial de ${item.sku}`}
+                          title="Ver historial del SKU"
+                        >
+                          <History />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -287,12 +306,28 @@ export function LinesOverview() {
                       </strong>
                     </p>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4 w-full"
+                    onClick={() => setHistoryTarget(item)}
+                  >
+                    <History /> Ver historial del SKU
+                  </Button>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
       ) : null}
+
+      <ProductHistorySheet
+        item={historyTarget}
+        open={Boolean(historyTarget)}
+        onOpenChange={(open) => {
+          if (!open) setHistoryTarget(null);
+        }}
+      />
     </div>
   );
 }

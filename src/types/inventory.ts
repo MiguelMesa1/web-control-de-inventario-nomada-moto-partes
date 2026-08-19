@@ -227,8 +227,18 @@ export interface OrdersPageData {
   current: InventoryItem[];
   reorderWatchlist: ReorderWatchItem[];
   purchaseOrders: PurchaseOrder[];
+  purchaseOrdersPage: PurchaseOrdersPageInfo;
+  purchaseOrderCounts: PurchaseOrderStatusCounts;
   isDemo: boolean;
 }
+
+export interface PurchaseOrdersPageInfo {
+  hasMore: boolean;
+  nextOffset: number;
+  snapshotBefore: string;
+}
+
+export type PurchaseOrderStatusCounts = Record<PurchaseOrderStatus, number>;
 
 export interface InventoryData {
   current: InventoryItem[];
@@ -240,4 +250,12 @@ export interface InventoryData {
   lowStockThreshold: number;
   loadedAt: string;
   isDemo: boolean;
+}
+
+export interface DashboardPageData extends InventoryData {
+  activeOrderSkus: string[];
+}
+
+export interface ReorderPageData extends InventoryData {
+  purchaseOrders: PurchaseOrder[];
 }

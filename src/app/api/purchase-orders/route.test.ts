@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createInsForgeServerClient, getAppProfile } = vi.hoisted(() => ({
+const { createInsForgeServerClient, getAppProfile, loadPurchaseOrderHistoryPage, loadActiveOrderSkus } = vi.hoisted(() => ({
   createInsForgeServerClient: vi.fn(),
   getAppProfile: vi.fn(),
+  loadPurchaseOrderHistoryPage: vi.fn(),
+  loadActiveOrderSkus: vi.fn(),
 }));
 
 vi.mock("@/lib/insforge/server", () => ({ createInsForgeServerClient }));
 vi.mock("@/lib/insforge/session", () => ({ getAppProfile }));
+vi.mock("@/lib/inventory/data", () => ({ loadPurchaseOrderHistoryPage }));
+vi.mock("@/lib/orders/active-order-data", () => ({ loadActiveOrderSkus }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const validOrder = {
   supplierName: "REDPLAS",
@@ -35,13 +39,53 @@ function request(body: unknown) {
   });
 }
 
-describe("POST /api/purchase-orders", () => {
+describe("/api/purchase-orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getAppProfile.mockResolvedValue({
       id: "user-1",
       role: "admin",
     });
+    loadActiveOrderSkus.mockResolvedValue([]);
+  });
+
+  it("carga una página de pedidos anteriores", async () => {
+    loadPurchaseOrderHistoryPage.mockResolvedValue({
+      orders: [{ id: "order-31", orderNumber: "PED-31" }],
+      page: {
+        hasMore: true,
+        nextOffset: 60,
+        snapshotBefore: "2026-08-19T12:00:00.000Z",
+      },
+    });
+
+    const response = await GET(
+      new Request(
+        "https://inventario.example/api/purchase-orders?offset=30&before=2026-08-19T12%3A00%3A00.000Z",
+      ),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(loadPurchaseOrderHistoryPage).toHaveBeenCalledWith(
+      30,
+      30,
+      "2026-08-19T12:00:00.000Z",
+    );
+    expect(body.page).toEqual({
+      hasMore: true,
+      nextOffset: 60,
+      snapshotBefore: "2026-08-19T12:00:00.000Z",
+    });
+  });
+
+  it("rechaza un desplazamiento de historial inválido", async () => {
+    const response = await GET(
+      new Request("https://inventario.example/api/purchase-orders?offset=-1"),
+    );
+
+    expect(response.status).toBe(400);
+    expect(loadPurchaseOrderHistoryPage).not.toHaveBeenCalled();
   });
 
   it("crea pedidos agrupados mediante una operación transaccional", async () => {
@@ -57,6 +101,20 @@ describe("POST /api/purchase-orders", () => {
     expect(rpc).toHaveBeenCalledWith("create_purchase_orders", {
       p_orders: [validOrder],
     });
+  });
+
+  it("rechaza una referencia que ya está en un pedido pendiente", async () => {
+    loadActiveOrderSkus.mockResolvedValue(["2220201"]);
+    const rpc = vi.fn();
+    createInsForgeServerClient.mockResolvedValue({ database: { rpc } });
+
+    const response = await POST(request({ orders: [validOrder] }));
+    const body = (await response.json()) as { message: string };
+
+    expect(response.status).toBe(409);
+    expect(body.message).toContain("2220201");
+    expect(body.message).toContain("Confirma que llegó");
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("rechaza cantidades inválidas antes de consultar la base", async () => {

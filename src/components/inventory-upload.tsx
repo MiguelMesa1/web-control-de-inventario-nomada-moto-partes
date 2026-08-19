@@ -188,6 +188,7 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
       setPreview(null);
       setSelectedFileName("");
       if (inputRef.current) inputRef.current.value = "";
+      window.dispatchEvent(new Event("reorder-alerts:refresh"));
       router.refresh();
     } catch (caught) {
       setShowUploadProgress(false);

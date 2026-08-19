@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { loadReorderAlertData } from "@/lib/inventory/data";
 import { getAppProfile } from "@/lib/insforge/session";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
+import { excludeActiveOrderRows } from "@/lib/orders/active-orders";
 
 export async function GET() {
   await getAppProfile();
   const data = await loadReorderAlertData();
-  const alerts = buildReorderAlertRows(
-    data.reorderWatchlist.filter((item) => item.active),
-    data.current,
+  const allAlerts = excludeActiveOrderRows(
+    buildReorderAlertRows(
+      data.reorderWatchlist.filter((item) => item.active),
+      data.current,
+    ),
+    data.activeOrderSkus,
   )
     .filter((item) => item.status !== "healthy")
     .sort(
@@ -18,8 +22,7 @@ export async function GET() {
         a.available - b.available ||
         a.productName.localeCompare(b.productName, "es"),
     )
-    .slice(0, 6)
-    .map((item) => ({
+  const alerts = allAlerts.slice(0, 6).map((item) => ({
       id: item.id,
       sku: item.sku,
       productName: item.productName,
@@ -32,7 +35,7 @@ export async function GET() {
     }));
 
   return NextResponse.json(
-    { alerts },
-    { headers: { "Cache-Control": "private, max-age=30" } },
+    { alerts, total: allAlerts.length },
+    { headers: { "Cache-Control": "private, no-store" } },
   );
 }

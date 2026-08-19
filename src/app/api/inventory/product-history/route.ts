@@ -8,6 +8,7 @@ import { createAuthenticatedInsForgeServerClient } from "@/lib/insforge/authenti
 import { isInsForgeConfigured } from "@/lib/insforge/config";
 import { getAppProfile } from "@/lib/insforge/session";
 import { buildProductHistory } from "@/lib/inventory/product-history";
+import { sanitizeText } from "@/lib/security/input";
 import type {
   InventoryHistoryPoint,
   InventoryItem,
@@ -37,8 +38,8 @@ type DbSnapshot = {
 export async function GET(request: Request) {
   await getAppProfile();
   const params = new URL(request.url).searchParams;
-  const sku = params.get("sku")?.trim();
-  const warehouse = params.get("warehouse")?.trim();
+  const sku = sanitizeText(params.get("sku"), { maxLength: 120 });
+  const warehouse = sanitizeText(params.get("warehouse"), { maxLength: 120 });
 
   if (!sku || !warehouse) {
     return NextResponse.json(

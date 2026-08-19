@@ -13,6 +13,18 @@ describe("request write protections", () => {
     expect(response?.status).toBe(403);
   });
 
+  it("accepts an explicitly configured app origin", () => {
+    process.env.APP_ALLOWED_ORIGINS = "https://app.inventory.example";
+    const response = requireSameOrigin(
+      new Request("https://api.inventory.example/api/settings", {
+        method: "PATCH",
+        headers: { origin: "https://app.inventory.example" },
+      }),
+    );
+    delete process.env.APP_ALLOWED_ORIGINS;
+    expect(response).toBeNull();
+  });
+
   it("accepts same-origin JSON within the configured limit", () => {
     const response = requireJsonRequest(
       new Request("https://inventario.example/api/settings", {

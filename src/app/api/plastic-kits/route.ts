@@ -3,24 +3,15 @@ import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { normalizePlasticKitHeadlight } from "@/lib/inventory/plastic-kit-headlight";
 import { requireJsonRequest, requireSameOrigin } from "@/lib/security/request";
-
-type KitPartInput = {
-  sku?: string;
-  productName?: string;
-  quantityRequired?: number;
-};
-
-type KitInput = {
-  id?: string;
-  name?: string;
-  brand?: string;
-  color?: string;
-  hasHeadlight?: boolean | null;
-  model?: string;
-  warehouse?: string;
-  active?: boolean;
-  parts?: KitPartInput[];
-};
+import {
+  isBoolean,
+  isPlainObject,
+  parseFiniteNumber,
+  readJsonObject,
+  sanitizeOptionalText,
+  sanitizeText,
+  sanitizeUuid,
+} from "@/lib/security/input";
 
 function messageFrom(error: unknown) {
   const message =
@@ -50,43 +41,66 @@ async function requireAdmin() {
   return null;
 }
 
-function validateKit(body: KitInput) {
-  const name = body.name?.trim();
-  const brand = body.brand?.trim();
-  const color = body.color?.trim();
-  const warehouse = body.warehouse?.trim();
-  const parts = Array.isArray(body.parts) ? body.parts : [];
+function validateKit(raw: Record<string, unknown>) {
+  const id = raw.id == null ? null : sanitizeUuid(raw.id);
+  const name = sanitizeText(raw.name, { maxLength: 120 });
+  const brand = sanitizeText(raw.brand, { maxLength: 120 });
+  const color = sanitizeText(raw.color, { maxLength: 120 });
+  const model = sanitizeOptionalText(raw.model, { maxLength: 120 });
+  const warehouse = sanitizeText(raw.warehouse, { maxLength: 120 });
+  const parts = Array.isArray(raw.parts) ? raw.parts : [];
 
   if (!name || !brand || !color || !warehouse) {
-    return "Completa nombre, marca, color y bodega.";
+    return { error: "Completa nombre, marca, color y bodega." };
   }
-  if (body.hasHeadlight !== null && typeof body.hasHeadlight !== "boolean") {
-    return "Indica si el kit maneja farola y selecciona su presentación.";
+  if ((raw.id != null && !id) || (raw.model != null && raw.model !== "" && !model)) {
+    return { error: "Los datos del kit no son válidos." };
   }
-  if ([name, brand, color, warehouse, body.model ?? ""].some((value) => value.length > 120)) {
-    return "Los datos del kit no pueden superar 120 caracteres.";
+  if (raw.hasHeadlight !== null && !isBoolean(raw.hasHeadlight)) {
+    return { error: "Indica si el kit maneja farola y selecciona su presentación." };
+  }
+  if (raw.active != null && !isBoolean(raw.active)) {
+    return { error: "El estado del kit no es válido." };
   }
   if (parts.length < 1 || parts.length > 100) {
-    return "Cada kit debe tener entre 1 y 100 piezas.";
+    return { error: "Cada kit debe tener entre 1 y 100 piezas." };
   }
   const normalizedSkus = new Set<string>();
+  const cleanParts: Array<{ sku: string; productName: string; quantityRequired: number }> = [];
   for (const part of parts) {
-    const sku = part.sku?.trim();
-    const productName = part.productName?.trim();
-    const quantity = Number(part.quantityRequired);
-    if (!sku || !productName || sku.length > 120 || productName.length > 300) {
-      return "Todas las piezas deben tener una referencia y un nombre válidos.";
+    if (!isPlainObject(part)) {
+      return { error: "Todas las piezas deben tener una referencia y un nombre válidos." };
     }
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
-      return "La cantidad de cada pieza debe estar entre 1 y 999.";
+    const sku = sanitizeText(part.sku, { maxLength: 120 });
+    const productName = sanitizeText(part.productName, { maxLength: 300 });
+    const quantity = parseFiniteNumber(part.quantityRequired, { integer: true, min: 1, max: 999 });
+    if (!sku || !productName) {
+      return { error: "Todas las piezas deben tener una referencia y un nombre válidos." };
+    }
+    if (quantity === null) {
+      return { error: "La cantidad de cada pieza debe estar entre 1 y 999." };
     }
     const normalizedSku = sku.toLocaleLowerCase("es");
     if (normalizedSkus.has(normalizedSku)) {
-      return "Una pieza no puede aparecer dos veces en el mismo kit.";
+      return { error: "Una pieza no puede aparecer dos veces en el mismo kit." };
     }
     normalizedSkus.add(normalizedSku);
+    cleanParts.push({ sku, productName, quantityRequired: quantity });
   }
-  return null;
+  return {
+    error: null,
+    value: {
+      id,
+      name,
+      brand,
+      color,
+      hasHeadlight: raw.hasHeadlight as boolean | null,
+      model,
+      warehouse,
+      active: isBoolean(raw.active) ? raw.active : true,
+      parts: cleanParts,
+    },
+  };
 }
 
 export async function POST(request: Request) {
@@ -95,30 +109,28 @@ export async function POST(request: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
 
-  const body = (await request.json()) as KitInput;
-  const validationError = validateKit(body);
-  if (validationError) {
-    return NextResponse.json({ message: validationError }, { status: 400 });
+  const parsed = await readJsonObject(request);
+  if (parsed.error) return parsed.error;
+  const validation = validateKit(parsed.data);
+  if (validation.error || !validation.value) {
+    return NextResponse.json({ message: validation.error }, { status: 400 });
   }
+  const body = validation.value;
 
   const insforge = await createInsForgeServerClient();
   const { data, error } = await insforge.database.rpc("save_plastic_kit", {
-    p_id: body.id ?? null,
-    p_name: body.name!.trim(),
-    p_brand: body.brand!.trim(),
-    p_color: body.color!.trim(),
+    p_id: body.id,
+    p_name: body.name,
+    p_brand: body.brand,
+    p_color: body.color,
     p_has_headlight: normalizePlasticKitHeadlight(
-      body.model?.trim() || body.brand!.trim(),
-      body.hasHeadlight ?? null,
+      body.model || body.brand,
+      body.hasHeadlight,
     ),
-    p_model: body.model?.trim() || null,
-    p_warehouse: body.warehouse!.trim(),
-    p_active: body.active ?? true,
-    p_parts: body.parts!.map((part) => ({
-      sku: part.sku!.trim(),
-      productName: part.productName!.trim(),
-      quantityRequired: Number(part.quantityRequired),
-    })),
+    p_model: body.model,
+    p_warehouse: body.warehouse,
+    p_active: body.active,
+    p_parts: body.parts,
   });
 
   if (error) {
@@ -133,7 +145,7 @@ export async function DELETE(request: Request) {
   const authError = await requireAdmin();
   if (authError) return authError;
 
-  const id = new URL(request.url).searchParams.get("id");
+  const id = sanitizeUuid(new URL(request.url).searchParams.get("id"));
   if (!id) {
     return NextResponse.json({ message: "Falta el identificador del kit." }, { status: 400 });
   }

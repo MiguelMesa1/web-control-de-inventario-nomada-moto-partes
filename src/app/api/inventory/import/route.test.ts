@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   createInsForgeServerClient,
   getAppProfile,
+  loadActiveOrderSkus,
   recordEmailDeliveryAttempt,
   sendBrevoEmail,
 } = vi.hoisted(() => ({
   createInsForgeServerClient: vi.fn(),
   getAppProfile: vi.fn(),
+  loadActiveOrderSkus: vi.fn(),
   recordEmailDeliveryAttempt: vi.fn(),
   sendBrevoEmail: vi.fn(),
 }));
@@ -18,12 +20,13 @@ vi.mock("@/lib/email/delivery-attempts", () => ({
 }));
 vi.mock("@/lib/insforge/server", () => ({ createInsForgeServerClient }));
 vi.mock("@/lib/insforge/session", () => ({ getAppProfile }));
+vi.mock("@/lib/orders/active-order-data", () => ({ loadActiveOrderSkus }));
 
-import { POST } from "./route";
+import { POST, reorderEmailStatusLabel } from "./route";
 
 const requestBody = {
   filename: "inventario.xlsx",
-  checksum: "checksum-unico",
+  checksum: "a".repeat(64),
   sourceExportedAt: "2026-07-30T05:00:00.000Z",
   items: [
     {
@@ -40,6 +43,10 @@ const requestBody = {
 };
 
 describe("POST /api/inventory/import", () => {
+  it("distingue en el correo un producto ausente del inventario", () => {
+    expect(reorderEmailStatusLabel("missing")).toBe("Sin registro");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     getAppProfile.mockResolvedValue({
@@ -55,6 +62,7 @@ describe("POST /api/inventory/import", () => {
       response: "250 2.0.0 OK",
     });
     recordEmailDeliveryAttempt.mockResolvedValue(undefined);
+    loadActiveOrderSkus.mockResolvedValue([]);
   });
 
   it("mantiene la publicación exitosa si falla el cálculo de recompra", async () => {
@@ -166,6 +174,66 @@ describe("POST /api/inventory/import", () => {
         providerResponse: "250 2.0.0 OK",
       }),
     );
+  });
+
+  it("no vuelve a notificar una referencia que ya tiene pedido activo", async () => {
+    loadActiveOrderSkus.mockResolvedValue(["SKU-1"]);
+    createInsForgeServerClient.mockResolvedValue({
+      database: {
+        rpc: vi.fn().mockResolvedValue({ data: "snapshot-active", error: null }),
+        from: vi.fn((table: string) => {
+          if (table === "reorder_watchlist") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn().mockResolvedValue({
+                  data: [
+                    {
+                      id: "watch-1",
+                      source_id: 1,
+                      sku: "SKU-1",
+                      product_name: "Producto de prueba",
+                      primary_supplier: "Proveedor principal",
+                      secondary_supplier: null,
+                      minimum_stock: 5,
+                      maximum_stock: 12,
+                      active: true,
+                      notes: null,
+                      created_at: "2026-07-30T05:00:00.000Z",
+                      updated_at: "2026-07-30T05:00:00.000Z",
+                    },
+                  ],
+                  error: null,
+                }),
+              })),
+            };
+          }
+
+          return {
+            select: vi.fn().mockResolvedValue({ data: [], error: null }),
+          };
+        }),
+      },
+    });
+
+    const response = await POST(
+      new Request("https://inventario.example/api/inventory/import", {
+        method: "POST",
+        headers: {
+          origin: "https://inventario.example",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      data: "snapshot-active",
+      reorderCount: 0,
+    });
+    expect(sendBrevoEmail).not.toHaveBeenCalled();
+    expect(recordEmailDeliveryAttempt).not.toHaveBeenCalled();
   });
 
   it("mantiene la publicación exitosa si falla el correo de recompra", async () => {
