@@ -216,6 +216,8 @@ export interface PurchaseOrder {
   id: string;
   orderNumber: string;
   supplierName: string;
+  createdBy: string;
+  createdByName: string;
   status: PurchaseOrderStatus;
   notes?: string;
   createdAt: string;

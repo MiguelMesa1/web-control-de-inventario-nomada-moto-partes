@@ -18,5 +18,6 @@ describe("security headers", () => {
     expect(policy).toContain("'nonce-abc123'");
     expect(policy).not.toContain("script-src 'self' 'unsafe-inline'");
     expect(policy).not.toContain("'unsafe-eval'");
+    expect(policy).toContain("base-uri 'none'");
   });
 });

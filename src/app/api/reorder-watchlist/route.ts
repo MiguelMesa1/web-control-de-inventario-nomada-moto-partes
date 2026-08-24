@@ -12,11 +12,14 @@ import {
 } from "@/lib/security/input";
 
 function errorMessage(error: unknown) {
-  return typeof error === "object" &&
+  const internalMessage = typeof error === "object" &&
     error !== null &&
     "message" in error &&
     typeof error.message === "string"
     ? error.message
+    : "";
+  return /unique|duplicate/i.test(internalMessage)
+    ? "Esta referencia ya está incluida en Recompra."
     : "No pudimos actualizar la configuración de recompra.";
 }
 
@@ -100,15 +103,7 @@ export async function POST(request: Request) {
     .select("id");
 
   if (error) {
-    const message = errorMessage(error);
-    return NextResponse.json(
-      {
-        message: /unique|duplicate/i.test(message)
-          ? "Esta referencia ya está incluida en Recompra."
-          : message,
-      },
-      { status: 400 },
-    );
+    return NextResponse.json({ message: errorMessage(error) }, { status: 400 });
   }
 
   return NextResponse.json({ id: data?.[0]?.id }, { status: 201 });

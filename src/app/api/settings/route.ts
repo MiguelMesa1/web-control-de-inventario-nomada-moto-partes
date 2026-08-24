@@ -3,6 +3,7 @@ import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { requireJsonRequest } from "@/lib/security/request";
 import { parseFiniteNumber, readJsonObject } from "@/lib/security/input";
+import { recordAuditEvent } from "@/lib/security/audit";
 
 export async function PATCH(request: Request) {
   const requestError = requireJsonRequest(request);
@@ -22,15 +23,13 @@ export async function PATCH(request: Request) {
     .from("inventory_settings")
     .update({ low_stock_threshold: threshold, updated_by: profile.id })
     .eq("id", true);
-  if (error) return NextResponse.json({ message: error.message }, { status: 400 });
-  await insforge.database.from("audit_events").insert([
-    {
-      actor_id: profile.id,
-      action: "settings.updated",
-      entity_type: "inventory_settings",
-      entity_id: "global",
-      details: { low_stock_threshold: threshold },
-    },
-  ]);
+  if (error) return NextResponse.json({ message: "No pudimos guardar la regla." }, { status: 400 });
+  await recordAuditEvent({
+    actorId: profile.id,
+    action: "settings.updated",
+    entityType: "inventory_settings",
+    entityId: "global",
+    details: { low_stock_threshold: threshold },
+  });
   return NextResponse.json({ ok: true });
 }

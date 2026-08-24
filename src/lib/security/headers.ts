@@ -23,11 +23,10 @@ export function isAllowedAppOrigin(origin: string | null, requestOrigin: string)
 }
 
 export function buildContentSecurityPolicy(nonce: string) {
-  const backendOrigin = asOrigin(process.env.NEXT_PUBLIC_INSFORGE_URL);
   const development = process.env.NODE_ENV !== "production";
   const directives = [
     "default-src 'self'",
-    "base-uri 'self'",
+    "base-uri 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
     "object-src 'none'",
@@ -36,7 +35,7 @@ export function buildContentSecurityPolicy(nonce: string) {
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${development ? " 'unsafe-eval'" : ""}`,
-    `connect-src 'self'${backendOrigin ? ` ${backendOrigin}` : ""}${development ? " ws: wss:" : ""}`,
+    `connect-src 'self'${development ? " ws: wss:" : ""}`,
     "worker-src 'self' blob:",
     "manifest-src 'self'",
   ];

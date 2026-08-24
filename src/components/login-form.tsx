@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
 import { useActionState, useState } from "react";
 import {
   signInAction,
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 
 const initialState: LoginState = {};
 
-export function LoginForm() {
+export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boolean }) {
   const [state, formAction, pending] = useActionState(
     signInAction,
     initialState,
@@ -28,6 +28,15 @@ export function LoginForm() {
           <LockKeyhole aria-hidden="true" />
           <AlertTitle>No pudimos entrar</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
+        </Alert>
+      )}
+      {passwordUpdated && !state.error && (
+        <Alert role="status">
+          <CheckCircle2 aria-hidden="true" />
+          <AlertTitle>Contraseña actualizada</AlertTitle>
+          <AlertDescription>
+            Inicia sesión con tu contraseña nueva.
+          </AlertDescription>
         </Alert>
       )}
 

@@ -8,8 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ password?: string }>;
+}) {
   const configured = isInsForgeConfigured();
+  const passwordUpdated = (await searchParams).password === "updated";
   return (
     <main className="racing-grid min-h-dvh bg-background text-foreground sm:p-6 lg:p-10">
       <div className="mx-auto grid min-h-dvh max-w-7xl overflow-hidden bg-card shadow-2xl sm:min-h-[calc(100dvh-3rem)] sm:rounded-[2rem] sm:border sm:border-border lg:min-h-[calc(100dvh-5rem)] xl:grid-cols-[1.08fr_0.92fr]">
@@ -53,7 +58,7 @@ export default function LoginPage() {
             </CardHeader>
             <CardContent className="px-1 sm:px-6">
               {configured ? (
-                <LoginForm />
+                <LoginForm passwordUpdated={passwordUpdated} />
               ) : (
                 <div className="flex flex-col gap-4">
                   <p className="text-sm text-muted-foreground">

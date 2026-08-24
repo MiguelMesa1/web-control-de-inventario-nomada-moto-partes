@@ -91,7 +91,7 @@ export async function GET(request: Request) {
   const error =
     historyResult.error ?? currentResult.error ?? snapshotsResult.error;
   if (error) {
-    return NextResponse.json({ message: error.message }, { status: 400 });
+    return NextResponse.json({ message: "No pudimos cargar el historial del producto." }, { status: 400 });
   }
 
   const history = ((historyResult.data ?? []) as DbHistoryPoint[]).map(

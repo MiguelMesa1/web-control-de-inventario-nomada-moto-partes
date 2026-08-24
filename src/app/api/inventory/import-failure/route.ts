@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     p_error_message: errorMessage,
   });
   if (error) {
-    return NextResponse.json({ message: error.message }, { status: 400 });
+    return NextResponse.json({ message: "No pudimos registrar el error de importación." }, { status: 400 });
   }
   return NextResponse.json({ data });
 }

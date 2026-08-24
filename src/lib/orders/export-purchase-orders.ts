@@ -128,8 +128,9 @@ export async function createPurchaseOrderDownload(
 
 export async function downloadPurchaseOrderFiles(
   groups: PurchaseOrderExportGroup[],
+  fileTag?: string,
 ) {
-  const download = await createPurchaseOrderDownload(groups);
+  const download = await createPurchaseOrderDownload(groups, fileTag);
   const url = URL.createObjectURL(download.blob);
   const anchor = document.createElement("a");
   anchor.href = url;

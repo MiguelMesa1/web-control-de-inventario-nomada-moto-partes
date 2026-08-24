@@ -257,16 +257,14 @@ export function AppShell({
                   </span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {profile.role === "admin" && (
-                  <>
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem asChild>
-                        <Link href="/settings">Configuración</Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
+                <DropdownMenuGroup>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings">
+                      {profile.role === "admin" ? "Configuración" : "Mi seguridad"}
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   disabled={isSigningOut}
                   onSelect={(event) => {

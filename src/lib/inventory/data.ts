@@ -1,6 +1,7 @@
-import { demoInventoryData } from "@/lib/demo-data";
+import { demoInventoryData, demoPurchaseOrders } from "@/lib/demo-data";
 import { createAuthenticatedInsForgeServerClient } from "@/lib/insforge/authenticated-server";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
+import { createInsForgeAdminClient } from "@/lib/insforge/server";
 import { loadAllPages } from "@/lib/inventory/pagination";
 import type {
   ImportRun,
@@ -50,6 +51,7 @@ type DbPurchaseOrder = {
   id: string;
   order_number: string;
   supplier_name: string;
+  created_by: string;
   status: PurchaseOrderStatus;
   notes: string | null;
   created_at: string;
@@ -262,6 +264,26 @@ const emptyPurchaseOrderCounts = (): PurchaseOrderStatusCounts => ({
   cancelled: 0,
 });
 
+async function loadPurchaseOrderCreatorNames(creatorIds: string[]) {
+  const uniqueCreatorIds = [...new Set(creatorIds)];
+  if (!uniqueCreatorIds.length) return new Map<string, string>();
+
+  const admin = createInsForgeAdminClient();
+  const creatorNames = new Map<string, string>();
+  for (let index = 0; index < uniqueCreatorIds.length; index += 200) {
+    const creatorIdBatch = uniqueCreatorIds.slice(index, index + 200);
+    const result = await admin.database
+      .from("profiles")
+      .select("id,display_name")
+      .in("id", creatorIdBatch);
+    if (result.error) throw new Error(result.error.message);
+    for (const profile of result.data ?? []) {
+      creatorNames.set(String(profile.id), String(profile.display_name));
+    }
+  }
+  return creatorNames;
+}
+
 async function loadPurchaseOrderStatusCounts(
   insforge: InsForgeServerClient,
 ): Promise<PurchaseOrderStatusCounts> {
@@ -302,7 +324,7 @@ async function loadPurchaseOrders(
     snapshotBefore = new Date().toISOString(),
   } = options;
   const orderFields =
-    "id,order_number,supplier_name,status,notes,created_at,updated_at";
+    "id,order_number,supplier_name,created_by,status,notes,created_at,updated_at";
   const loadActiveOrders = () =>
     loadAllPages<DbPurchaseOrder>((from, to) =>
       insforge.database
@@ -361,6 +383,9 @@ async function loadPurchaseOrders(
     maximum_stock: number | string;
     created_at: string;
   };
+  const creatorNamesPromise = loadPurchaseOrderCreatorNames(
+    orders.map((order) => String(order.created_by)),
+  );
   const purchaseOrderItems: DbPurchaseOrderItem[] = [];
   for (let index = 0; index < orderIds.length; index += 200) {
     const orderIdBatch = orderIds.slice(index, index + 200);
@@ -377,6 +402,7 @@ async function loadPurchaseOrders(
     );
     purchaseOrderItems.push(...batch);
   }
+  const creatorNames = await creatorNamesPromise;
 
   const itemsByOrder = new Map<string, PurchaseOrderItem[]>();
   for (const item of purchaseOrderItems) {
@@ -401,6 +427,9 @@ async function loadPurchaseOrders(
         id: String(order.id),
         orderNumber: String(order.order_number),
         supplierName: String(order.supplier_name),
+        createdBy: String(order.created_by),
+        createdByName:
+          creatorNames.get(String(order.created_by)) ?? "Usuario del equipo",
         status: order.status as PurchaseOrder["status"],
         notes: order.notes ? String(order.notes) : undefined,
         createdAt: String(order.created_at),
@@ -550,13 +579,16 @@ export async function loadOrdersPageData(): Promise<OrdersPageData> {
     return {
       current: demoInventoryData.current,
       reorderWatchlist: demoInventoryData.reorderWatchlist,
-      purchaseOrders: [],
+      purchaseOrders: demoPurchaseOrders,
       purchaseOrdersPage: {
         hasMore: false,
         nextOffset: 0,
         snapshotBefore: new Date().toISOString(),
       },
-      purchaseOrderCounts: emptyPurchaseOrderCounts(),
+      purchaseOrderCounts: {
+        ...emptyPurchaseOrderCounts(),
+        received: demoPurchaseOrders.length,
+      },
       isDemo: true,
     };
   }
