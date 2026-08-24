@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createAuthenticatedInsForgeServerClient } = vi.hoisted(() => ({
+const { createAuthenticatedInsForgeServerClient, createInsForgeAdminClient } = vi.hoisted(() => ({
   createAuthenticatedInsForgeServerClient: vi.fn(),
+  createInsForgeAdminClient: vi.fn(),
 }));
 
 vi.mock("@/lib/insforge/authenticated-server", () => ({
   createAuthenticatedInsForgeServerClient,
 }));
+vi.mock("@/lib/insforge/server", () => ({ createInsForgeAdminClient }));
 
 import { loadPurchaseOrderHistoryPage } from "@/lib/inventory/data";
 
@@ -18,6 +20,7 @@ describe("paginación del historial de pedidos", () => {
       id: `order-${index + 31}`,
       order_number: `PED-${index + 31}`,
       supplier_name: "Proveedor",
+      created_by: "creator-1",
       status: "received",
       notes: null,
       created_at: new Date(2026, 7, 19, 12, 0, -index).toISOString(),
@@ -53,6 +56,18 @@ describe("paginación del historial de pedidos", () => {
           .mockReturnValueOnce(itemQuery),
       },
     });
+    const profileQuery = {
+      select: vi.fn(),
+      in: vi.fn(),
+    };
+    profileQuery.select.mockReturnValue(profileQuery);
+    profileQuery.in.mockResolvedValue({
+      data: [{ id: "creator-1", display_name: "Laura Gómez" }],
+      error: null,
+    });
+    createInsForgeAdminClient.mockReturnValue({
+      database: { from: vi.fn().mockReturnValue(profileQuery) },
+    });
 
     const snapshotBefore = "2026-08-19T12:00:00.000Z";
     const result = await loadPurchaseOrderHistoryPage(30, 30, snapshotBefore);
@@ -60,6 +75,10 @@ describe("paginación del historial de pedidos", () => {
     expect(recentQuery.lte).toHaveBeenCalledWith("created_at", snapshotBefore);
     expect(recentQuery.range).toHaveBeenCalledWith(30, 60);
     expect(result.orders).toHaveLength(30);
+    expect(result.orders[0]).toMatchObject({
+      createdBy: "creator-1",
+      createdByName: "Laura Gómez",
+    });
     expect(result.page).toEqual({
       hasMore: true,
       nextOffset: 60,

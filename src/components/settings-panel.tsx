@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clock3,
   MailWarning,
+  KeyRound,
   Save,
   Settings2,
   ShieldCheck,
@@ -12,6 +13,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
+import { PasswordResetDialog } from "@/components/password-reset-dialog";
 import { useProfile } from "@/components/providers/profile-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -82,11 +84,38 @@ export function SettingsPanel({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Reglas del portal"
+        eyebrow="Cuenta y reglas del portal"
         title="Configuración"
-        description="Ajusta los criterios que alimentan alertas, rankings y gráficas."
+        description="Protege tu cuenta y, si eres administrador, ajusta las reglas del inventario."
         icon={Settings2}
       />
+      <section className="max-w-2xl">
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-display text-2xl uppercase">
+              <KeyRound className="size-5 text-primary" /> Seguridad de la cuenta
+            </CardTitle>
+            <CardDescription>
+              Cambia tu contraseña mediante un código enviado a {profile.email}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Al terminar se cerrará tu sesión y deberás entrar nuevamente con la
+              contraseña nueva.
+            </p>
+            <PasswordResetDialog disabled={isDemo} />
+            {isDemo && (
+              <p className="text-xs text-muted-foreground">
+                El cambio de contraseña no está disponible en modo demostración.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {isAdmin && (
+        <>
       <section className="max-w-2xl">
       <Card className="h-fit">
         <CardHeader>
@@ -239,6 +268,8 @@ export function SettingsPanel({
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

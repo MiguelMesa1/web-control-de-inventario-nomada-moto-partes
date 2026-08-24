@@ -5,6 +5,7 @@ import type {
   InventoryItem,
   InventorySnapshot,
   PlasticKitDefinition,
+  PurchaseOrder,
   ReorderWatchItem,
   UserProfile,
 } from "@/types/inventory";
@@ -166,6 +167,32 @@ export const demoReorderWatchlist: ReorderWatchItem[] = demoCurrent
     createdAt: today.toISOString(),
     updatedAt: today.toISOString(),
   }));
+
+export const demoPurchaseOrders: PurchaseOrder[] = [
+  {
+    id: "demo-order-received",
+    orderNumber: "PED-DEMO-001",
+    supplierName: "Proveedor histórico",
+    createdBy: demoProfile.id,
+    createdByName: demoProfile.displayName,
+    status: "received",
+    createdAt: today.toISOString(),
+    updatedAt: today.toISOString(),
+    items: [
+      {
+        id: "demo-order-item-1",
+        orderId: "demo-order-received",
+        sku: "NM-001",
+        productName: "Pastillas de freno ceramic",
+        quantity: 9,
+        availableAtCreation: 4,
+        minimumStock: 10,
+        maximumStock: 24,
+        createdAt: today.toISOString(),
+      },
+    ],
+  },
+];
 
 export const demoInventoryData: InventoryData = {
   current: demoCurrent,

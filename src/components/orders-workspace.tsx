@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   Clock3,
+  Download,
   FilterX,
   LoaderCircle,
   Minus,
@@ -972,20 +973,27 @@ function OrderProgress({ status }: { status: PurchaseOrderStatus }) {
 function PurchaseOrderCard({
   order,
   canEdit,
+  downloading,
   updating,
+  onDownload,
   onUpdateStatus,
   onRequestReceived,
 }: {
   order: PurchaseOrder;
   canEdit: boolean;
+  downloading: boolean;
   updating: boolean;
+  onDownload: (order: PurchaseOrder) => void;
   onUpdateStatus: (order: PurchaseOrder, status: PurchaseOrderStatus) => void;
   onRequestReceived: (order: PurchaseOrder) => void;
 }) {
   const units = order.items.reduce((total, item) => total + item.quantity, 0);
 
   return (
-    <Card>
+    <Card
+      role="article"
+      aria-label={`Pedido ${order.orderNumber} de ${order.supplierName}`}
+    >
       <CardHeader className="border-b bg-muted/15">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -996,7 +1004,10 @@ function PurchaseOrderCard({
               {orderStatus(order.status)}
             </div>
             <CardDescription className="mt-1">
-              {order.orderNumber} · {orderDate.format(new Date(order.createdAt))}
+              <span className="block">
+                {order.orderNumber} · {orderDate.format(new Date(order.createdAt))}
+              </span>
+              <span className="mt-1 block">Creado por {order.createdByName}</span>
             </CardDescription>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -1037,51 +1048,70 @@ function PurchaseOrderCard({
           </div>
         </details>
       </CardContent>
-      {canEdit && (order.status === "draft" || order.status === "ordered") ? (
-        <CardFooter className="flex-wrap gap-2 border-t pt-5 sm:pt-6">
-          {order.status === "draft" ? (
-            <Button
-              onClick={() => onUpdateStatus(order, "ordered")}
-              disabled={updating}
-            >
-              {updating ? (
-                <LoaderCircle
-                  className="animate-spin"
-                  data-icon="inline-start"
-                  aria-hidden="true"
-                />
-              ) : (
-                <Truck data-icon="inline-start" aria-hidden="true" />
-              )}
-              Confirmar que fue solicitado
-            </Button>
+      <CardFooter className="flex-wrap gap-2 border-t pt-5 sm:pt-6">
+        <Button
+          variant="outline"
+          onClick={() => onDownload(order)}
+          disabled={downloading}
+          aria-label={`Descargar Excel de ${order.orderNumber}`}
+        >
+          {downloading ? (
+            <LoaderCircle
+              className="animate-spin"
+              data-icon="inline-start"
+              aria-hidden="true"
+            />
           ) : (
+            <Download data-icon="inline-start" aria-hidden="true" />
+          )}
+          Descargar Excel
+        </Button>
+        {canEdit && (order.status === "draft" || order.status === "ordered") ? (
+          <>
+            {order.status === "draft" ? (
+              <Button
+                onClick={() => onUpdateStatus(order, "ordered")}
+                disabled={updating}
+              >
+                {updating ? (
+                  <LoaderCircle
+                    className="animate-spin"
+                    data-icon="inline-start"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Truck data-icon="inline-start" aria-hidden="true" />
+                )}
+                Confirmar que fue solicitado
+              </Button>
+            ) : (
+              <Button
+                onClick={() => onRequestReceived(order)}
+                disabled={updating}
+              >
+                {updating ? (
+                  <LoaderCircle
+                    className="animate-spin"
+                    data-icon="inline-start"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
+                )}
+                Confirmar que llegó
+              </Button>
+            )}
             <Button
-              onClick={() => onRequestReceived(order)}
+              variant="outline"
+              onClick={() => onUpdateStatus(order, "cancelled")}
               disabled={updating}
             >
-              {updating ? (
-                <LoaderCircle
-                  className="animate-spin"
-                  data-icon="inline-start"
-                  aria-hidden="true"
-                />
-              ) : (
-                <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
-              )}
-              Confirmar que llegó
+              <X data-icon="inline-start" aria-hidden="true" />
+              Cancelar pedido
             </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => onUpdateStatus(order, "cancelled")}
-            disabled={updating}
-          >
-            <X data-icon="inline-start" aria-hidden="true" />
-            Cancelar pedido
-          </Button>
-        </CardFooter>
-      ) : null}
+          </>
+        ) : null}
+      </CardFooter>
     </Card>
   );
 }
@@ -1125,6 +1155,9 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
     null,
   );
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [downloadingOrderId, setDownloadingOrderId] = useState<string | null>(
+    null,
+  );
   const deferredQuery = useDeferredValue(query);
   const deferredManualQuery = useDeferredValue(manualQuery);
   const cartStorageKey = purchaseCartStorageKey(profile.id);
@@ -1591,6 +1624,37 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
     }
   }
 
+  async function downloadSavedOrder(order: PurchaseOrder) {
+    setDownloadingOrderId(order.id);
+    try {
+      const { downloadPurchaseOrderFiles } = await import(
+        "@/lib/orders/export-purchase-orders"
+      );
+      await downloadPurchaseOrderFiles(
+        [
+          {
+            supplierName: order.supplierName,
+            items: order.items.map((item) => ({
+              sku: item.sku,
+              productName: item.productName,
+              quantity: item.quantity,
+            })),
+          },
+        ],
+        order.orderNumber.toLowerCase(),
+      );
+      toast.success("Excel descargado", {
+        description: `${order.orderNumber} · ${order.supplierName}`,
+      });
+    } catch (error) {
+      toast.error("No pudimos descargar el Excel", {
+        description: error instanceof Error ? error.message : "Intenta nuevamente.",
+      });
+    } finally {
+      setDownloadingOrderId(null);
+    }
+  }
+
   async function loadOlderOrders() {
     if (loadingOlderOrders || !purchaseOrdersPage.hasMore) return;
     setLoadingOlderOrders(true);
@@ -1767,7 +1831,7 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
                           selectedSupplier={selectedSupplierFor(row)}
                           inCart={cartSkus.has(row.sku)}
                           activeOrder={activeOrderBySku.get(row.sku)}
-                          canEdit={canEdit}
+                          canEdit={canEdit && cartLoaded}
                           onSupplierChange={updateSuggestionSupplier}
                           onAdd={addToCart}
                           onReviewCart={showCart}
@@ -1863,7 +1927,9 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
                       key={order.id}
                       order={order}
                       canEdit={canEdit}
+                      downloading={downloadingOrderId === order.id}
                       updating={updatingOrderId === order.id}
+                      onDownload={downloadSavedOrder}
                       onUpdateStatus={updateOrderStatus}
                       onRequestReceived={setOrderToReceive}
                     />
@@ -2037,7 +2103,7 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
                   </div>
                   <Button
                     variant="outline"
-                    disabled={!canEdit || !hasSupplier}
+                    disabled={!canEdit || !cartLoaded || !hasSupplier}
                     onClick={() => {
                       addToCart(row, supplier);
                       setManualOpen(false);

@@ -1,13 +1,28 @@
-import { updateSession } from "@insforge/sdk/ssr/middleware";
+import {
+  clearAuthCookies,
+  updateSession,
+} from "@insforge/sdk/ssr/middleware";
 import { NextResponse, type NextRequest } from "next/server";
-import { isInsForgeConfigured } from "@/lib/insforge/config";
+import {
+  getInsForgeConnectionSettings,
+  isInsForgeConfigured,
+} from "@/lib/insforge/config";
 import {
   buildContentSecurityPolicy,
   isAllowedAppOrigin,
 } from "@/lib/security/headers";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import { authCookieSettings } from "@/lib/insforge/auth-cookies";
+import {
+  createServerSessionValue,
+  readServerSessionValue,
+  serverSessionCookie,
+  serverSessionExpired,
+} from "@/lib/auth/server-session";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+const PUBLIC_PATHS = new Set(["/", "/login", "/api/auth/refresh"]);
 
 async function clientIdentity(request: NextRequest) {
   const session = request.cookies.get("insforge_access_token")?.value;
@@ -28,6 +43,12 @@ async function clientIdentity(request: NextRequest) {
 function rateLimitFor(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   if (pathname === "/api/auth/refresh") return { limit: 30, windowMs: 60_000 };
+  if (pathname === "/api/auth/password-reset/request") {
+    return { limit: 5, windowMs: 15 * 60_000 };
+  }
+  if (pathname === "/api/auth/password-reset/complete") {
+    return { limit: 10, windowMs: 15 * 60_000 };
+  }
   if (pathname === "/api/inventory/import") return { limit: 10, windowMs: 10 * 60_000 };
   if (UNSAFE_METHODS.has(request.method)) return { limit: 90, windowMs: 60_000 };
   return { limit: 300, windowMs: 60_000 };
@@ -45,10 +66,45 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("Content-Security-Policy", csp);
   requestHeaders.set("x-nonce", nonce);
+  const hasAuthCookie = Boolean(
+    request.cookies.get("insforge_access_token")?.value ||
+      request.cookies.get("insforge_refresh_token")?.value,
+  );
+
+  if (!ALLOWED_METHODS.has(request.method)) {
+    const rejected = NextResponse.json(
+      { message: "Método no permitido." },
+      { status: 405, headers: { Allow: [...ALLOWED_METHODS].join(", ") } },
+    );
+    return applySecurityHeaders(rejected, csp, nonce);
+  }
+
+  const origin = request.headers.get("origin");
+  if (
+    UNSAFE_METHODS.has(request.method) &&
+    origin &&
+    !isAllowedAppOrigin(origin, request.nextUrl.origin)
+  ) {
+    return applySecurityHeaders(
+      NextResponse.json({ message: "Origen no permitido." }, { status: 403 }),
+      csp,
+      nonce,
+    );
+  }
+
+  if (
+    isInsForgeConfigured() &&
+    !hasAuthCookie &&
+    !PUBLIC_PATHS.has(request.nextUrl.pathname)
+  ) {
+    const unauthorized = request.nextUrl.pathname.startsWith("/api/")
+      ? NextResponse.json({ message: "Inicia sesión para continuar." }, { status: 401 })
+      : NextResponse.redirect(new URL("/login", request.url));
+    return applySecurityHeaders(unauthorized, csp, nonce);
+  }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
     const requestOrigin = request.nextUrl.origin;
-    const origin = request.headers.get("origin");
     if (request.method === "OPTIONS") {
       if (!isAllowedAppOrigin(origin, requestOrigin)) {
         return applySecurityHeaders(
@@ -66,10 +122,7 @@ export async function proxy(request: NextRequest) {
       preflight.headers.set("Vary", "Origin");
       return applySecurityHeaders(preflight, csp, nonce);
     }
-    if (
-      UNSAFE_METHODS.has(request.method) &&
-      !isAllowedAppOrigin(origin, requestOrigin)
-    ) {
+    if (UNSAFE_METHODS.has(request.method) && !isAllowedAppOrigin(origin, requestOrigin)) {
       return applySecurityHeaders(
         NextResponse.json({ message: "Origen no permitido." }, { status: 403 }),
         csp,
@@ -95,15 +148,47 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  let sessionTimes = hasAuthCookie
+    ? await readServerSessionValue(request.cookies.get(serverSessionCookie.name)?.value)
+    : null;
+  if (hasAuthCookie && sessionTimes && serverSessionExpired(sessionTimes)) {
+    const expired = request.nextUrl.pathname.startsWith("/api/")
+      ? NextResponse.json({ message: "La sesión venció. Inicia sesión nuevamente." }, { status: 401 })
+      : NextResponse.redirect(new URL("/login?session=expired", request.url));
+    clearAuthCookies(expired.cookies, authCookieSettings);
+    expired.cookies.delete(serverSessionCookie.name);
+    return applySecurityHeaders(expired, csp, nonce);
+  }
+
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   if (isInsForgeConfigured()) {
-    await updateSession({
+    const { baseUrl, anonKey } = getInsForgeConnectionSettings();
+    const sessionResult = await updateSession({
       // RequestCookies is read-only in Next.js 16; the SDK only reads this store.
       requestCookies: request.cookies as never,
       responseCookies: response.cookies,
+      baseUrl: baseUrl!,
+      anonKey: anonKey!,
+      ...authCookieSettings,
     });
+    if (sessionResult.error) {
+      response.cookies.delete(serverSessionCookie.name);
+    } else if (hasAuthCookie || sessionResult.accessToken) {
+      const now = Math.floor(Date.now() / 1000);
+      sessionTimes ??= { issuedAt: now, lastActivityAt: now };
+      const sessionValue = await createServerSessionValue({
+        issuedAt: sessionTimes.issuedAt,
+        lastActivityAt: now,
+      });
+      if (sessionValue) {
+        response.cookies.set(
+          serverSessionCookie.name,
+          sessionValue,
+          serverSessionCookie.options,
+        );
+      }
+    }
   }
-  const origin = request.headers.get("origin");
   if (origin && isAllowedAppOrigin(origin, request.nextUrl.origin)) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set("Access-Control-Allow-Credentials", "true");

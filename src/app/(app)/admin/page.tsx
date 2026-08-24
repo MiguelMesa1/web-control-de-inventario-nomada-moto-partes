@@ -58,5 +58,11 @@ export default async function AdminPage() {
     }));
   }
 
-  return <AdminUsers initialUsers={users} isDemo={!isInsForgeConfigured()} />;
+  return (
+    <AdminUsers
+      initialUsers={users}
+      currentUser={profile}
+      isDemo={!isInsForgeConfigured()}
+    />
+  );
 }

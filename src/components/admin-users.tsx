@@ -4,6 +4,7 @@ import { Crown, LoaderCircle, Plus, ShieldCheck, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
+import { PasswordResetDialog } from "@/components/password-reset-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { UserProfile, UserRole } from "@/types/inventory";
+import { canResetPassword } from "@/lib/auth/password-reset";
 
 const roleLabels: Record<UserRole, string> = {
   admin: "Administrador",
@@ -50,9 +52,11 @@ const roleLabels: Record<UserRole, string> = {
 
 export function AdminUsers({
   initialUsers,
+  currentUser,
   isDemo,
 }: {
   initialUsers: UserProfile[];
+  currentUser: UserProfile;
   isDemo: boolean;
 }) {
   const [users, setUsers] = useState(initialUsers);
@@ -173,13 +177,12 @@ export function AdminUsers({
                       name="password"
                       type="password"
                       required
-                      minLength={12}
+                      minLength={8}
                       maxLength={128}
-                      pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,128}"
                       aria-describedby="password-rules"
                     />
                     <p id="password-rules" className="text-xs text-muted-foreground">
-                      Mínimo 12 caracteres con mayúscula, minúscula, número y símbolo.
+                      Entre 8 y 128 caracteres. Evita claves comunes o fáciles de adivinar.
                     </p>
                   </div>
                   <div className="grid gap-2">
@@ -225,6 +228,7 @@ export function AdminUsers({
                 <TableHead>Usuario</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="min-w-60">Permiso</TableHead>
+                <TableHead className="min-w-56">Contraseña</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -263,6 +267,26 @@ export function AdminUsers({
                     </Select>
                     {user.isPrimary && (
                       <p className="mt-1 text-xs text-muted-foreground">Cuenta protegida</p>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {canResetPassword(currentUser, user) ? (
+                      <PasswordResetDialog
+                        target={user}
+                        disabled={isDemo}
+                        triggerLabel={
+                          currentUser.id === user.id
+                            ? "Cambiar la mía"
+                            : "Restablecer"
+                        }
+                        triggerVariant="outline"
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {user.isPrimary
+                          ? "Solo puede cambiarla el titular"
+                          : "Reservado al admin principal"}
+                      </p>
                     )}
                   </TableCell>
                 </TableRow>

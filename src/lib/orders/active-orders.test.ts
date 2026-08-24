@@ -16,6 +16,8 @@ function order(
     id: orderNumber,
     orderNumber,
     supplierName,
+    createdBy: "creator-1",
+    createdByName: "Usuario de prueba",
     status,
     createdAt: "2026-08-19T12:00:00.000Z",
     updatedAt: "2026-08-19T12:00:00.000Z",

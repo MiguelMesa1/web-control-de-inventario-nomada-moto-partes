@@ -27,7 +27,7 @@ function messageFrom(error: unknown) {
   if (/at least (?:one|two) parts/i.test(message)) {
     return "Agrega al menos una pieza para crear el kit.";
   }
-  return message;
+  return "No pudimos guardar el kit plástico.";
 }
 
 async function requireAdmin() {

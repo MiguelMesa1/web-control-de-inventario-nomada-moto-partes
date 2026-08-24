@@ -25,7 +25,7 @@ export async function PUT(request: Request) {
     [{ product_line: productLine, reorder_point: reorderPoint, updated_by: profile.id }],
     { onConflict: "product_line" },
   );
-  if (error) return NextResponse.json({ message: error.message }, { status: 400 });
+  if (error) return NextResponse.json({ message: "No pudimos guardar la regla de esta línea." }, { status: 400 });
   return NextResponse.json({ ok: true });
 }
 
@@ -38,6 +38,6 @@ export async function DELETE(request: Request) {
   if (!productLine) return NextResponse.json({ message: "Falta la línea." }, { status: 400 });
   const insforge = await createInsForgeServerClient();
   const { error } = await insforge.database.from("reorder_line_settings").delete().eq("product_line", productLine);
-  if (error) return NextResponse.json({ message: error.message }, { status: 400 });
+  if (error) return NextResponse.json({ message: "No pudimos eliminar la regla de esta línea." }, { status: 400 });
   return NextResponse.json({ ok: true });
 }

@@ -48,8 +48,8 @@ Aplicación web para administrar el inventario de **Nomada Moto Partes**. Centra
 3. Completa `.env.local` con las credenciales de tu proyecto InsForge:
 
    ```env
-   NEXT_PUBLIC_INSFORGE_URL=https://tu-proyecto.us-east.insforge.app
-   NEXT_PUBLIC_INSFORGE_ANON_KEY=
+   INSFORGE_URL=https://tu-proyecto.us-east.insforge.app
+   INSFORGE_ANON_KEY=
    NEXT_PUBLIC_APP_URL=http://localhost:3000
    INSFORGE_API_KEY=
    ```

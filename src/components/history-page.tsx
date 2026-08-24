@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 const dateTime = new Intl.DateTimeFormat("es-CO", {
   dateStyle: "medium",
@@ -59,23 +60,52 @@ export function HistoryPage() {
       <section className="grid gap-4 sm:grid-cols-3">
         {(
           [
-            { label: "Cargas correctas", value: success, icon: CheckCircle2 },
-            { label: "Cargas rechazadas", value: failed, icon: XCircle },
+            {
+              label: "Cargas correctas",
+              value: success,
+              icon: CheckCircle2,
+              cardClassName: "border-primary/25",
+              iconClassName: "bg-primary/15 text-primary dark:text-primary",
+            },
+            {
+              label: "Cargas rechazadas",
+              value: failed,
+              icon: XCircle,
+              cardClassName: "border-destructive/25",
+              iconClassName: "bg-destructive/10 text-destructive",
+            },
             {
               label: "Instantáneas retenidas",
               value: snapshots.length,
               icon: Clock3,
+              cardClassName: "",
+              iconClassName: "bg-muted text-foreground",
             },
-          ] satisfies Array<{ label: string; value: number; icon: LucideIcon }>
-        ).map(({ label, value, icon: Icon }) => (
-          <Card key={label}>
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="grid size-11 place-items-center rounded-xl bg-primary/15 text-primary-foreground">
-                <Icon className="size-5" />
+          ] satisfies Array<{
+            label: string;
+            value: number;
+            icon: LucideIcon;
+            cardClassName: string;
+            iconClassName: string;
+          }>
+        ).map(({ label, value, icon: Icon, cardClassName, iconClassName }) => (
+          <Card key={label} className={cardClassName}>
+            <CardContent className="flex min-h-24 items-center gap-3 p-4 sm:p-5">
+              <div
+                className={cn(
+                  "grid size-11 shrink-0 place-items-center rounded-xl",
+                  iconClassName,
+                )}
+              >
+                <Icon className="size-5" aria-hidden="true" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="text-2xl font-bold tabular-nums">{value}</p>
+              <div className="flex min-w-0 flex-col justify-center gap-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {label}
+                </p>
+                <p className="font-display text-2xl font-bold leading-none tabular-nums">
+                  {value}
+                </p>
               </div>
             </CardContent>
           </Card>

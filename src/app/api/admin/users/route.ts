@@ -13,6 +13,11 @@ import {
   sanitizeText,
   sanitizeUuid,
 } from "@/lib/security/input";
+import {
+  isStrongPassword,
+  PASSWORD_RULES_MESSAGE,
+} from "@/lib/auth/password-reset";
+import { recordAuditEvent } from "@/lib/security/audit";
 
 const validRoles: UserRole[] = ["admin", "reader", "uploader", "blocked"];
 
@@ -44,15 +49,13 @@ export async function PATCH(request: Request) {
     .update({ role, active: role !== "blocked" })
     .eq("id", id);
   if (error) return NextResponse.json({ message: "No pudimos actualizar el permiso." }, { status: 400 });
-  await insforge.database.from("audit_events").insert([
-    {
-      actor_id: actor.id,
-      action: "profile.role_changed",
-      entity_type: "profile",
-      entity_id: id,
-      details: { role },
-    },
-  ]);
+  await recordAuditEvent({
+    actorId: actor.id,
+    action: "profile.role_changed",
+    entityType: "profile",
+    entityId: id,
+    details: { role },
+  });
   return NextResponse.json({ ok: true });
 }
 
@@ -69,21 +72,14 @@ export async function POST(request: Request) {
   const email = sanitizeEmail(parsed.data.email);
   const password = typeof parsed.data.password === "string" ? parsed.data.password : "";
   const role = parsed.data.role;
-  const strongPassword =
-    password.length >= 12 &&
-    password.length <= 128 &&
-    /[a-z]/.test(password) &&
-    /[A-Z]/.test(password) &&
-    /\d/.test(password) &&
-    /[^A-Za-z0-9]/.test(password);
   if (
     !displayName ||
     !email ||
-    !strongPassword ||
+    !isStrongPassword(password) ||
     typeof role !== "string" ||
     !validRoles.includes(role as UserRole)
   ) {
-    return NextResponse.json({ message: "Usa un nombre y correo válidos, un permiso permitido y una contraseña de 12 a 128 caracteres con mayúscula, minúscula, número y símbolo." }, { status: 400 });
+    return NextResponse.json({ message: `Usa un nombre y correo válidos y un permiso permitido. ${PASSWORD_RULES_MESSAGE}` }, { status: 400 });
   }
   if (!isInsForgeConfigured() || !process.env.INSFORGE_API_KEY) {
     return NextResponse.json(
@@ -102,7 +98,7 @@ export async function POST(request: Request) {
   const authUser = authData?.user;
   if (authError || !authUser) {
     return NextResponse.json(
-      { message: authError?.message ?? "InsForge rechazó la cuenta." },
+      { message: "No pudimos crear la cuenta. Revisa el correo e intenta nuevamente." },
       { status: 400 },
     );
   }
@@ -122,15 +118,13 @@ export async function POST(request: Request) {
     .select("id,email,display_name,role,active,is_primary")
     .single();
   if (error) return NextResponse.json({ message: "No pudimos crear el perfil." }, { status: 400 });
-  await admin.database.from("audit_events").insert([
-    {
-      actor_id: actor.id,
-      action: "profile.created",
-      entity_type: "profile",
-      entity_id: authUser.id,
-      details: { role, email },
-    },
-  ]);
+  await recordAuditEvent({
+    actorId: actor.id,
+    action: "profile.created",
+    entityType: "profile",
+    entityId: authUser.id,
+    details: { role, email },
+  });
   const row = data as {
     id: string;
     email: string;

@@ -28,15 +28,10 @@ type PurchaseOrderPayload = {
 };
 
 function errorMessage(
-  error: unknown,
+  _error: unknown,
   fallback = "No pudimos guardar los pedidos.",
 ) {
-  return typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string"
-    ? error.message
-    : fallback;
+  return fallback;
 }
 
 export async function GET(request: Request) {

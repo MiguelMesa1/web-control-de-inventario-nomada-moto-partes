@@ -24,6 +24,7 @@ test-results/
 .turbo/
 .cache/
 .tmp/
+.pnpm-store/
 .env
 .env.local
 .env*.local
