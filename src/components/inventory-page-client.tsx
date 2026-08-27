@@ -1,17 +1,34 @@
 "use client";
 
-import { Download, PackageSearch } from "lucide-react";
+import { Download, Upload } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { InventoryTable } from "@/components/inventory-table";
 import { PageHeader } from "@/components/page-header";
 import { useInventoryData } from "@/components/providers/inventory-provider";
+import { useProfile } from "@/components/providers/profile-provider";
 import { Button } from "@/components/ui/button";
+
+const dateTime = new Intl.DateTimeFormat("es-CO", {
+  day: "numeric",
+  month: "short",
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 export function InventoryPageClient() {
   const data = useInventoryData();
+  const profile = useProfile();
+  const canUpload = profile.role === "admin" || profile.role === "uploader";
   const searchParams = useSearchParams();
   const initialLine = searchParams.get("line") ?? "all";
   const initialQuery = searchParams.get("sku") ?? "";
+  const referenceCount = new Set(data.current.map((item) => item.sku)).size;
+  const latestExportedAt = data.current.reduce<string | null>(
+    (latest, item) =>
+      !latest || item.sourceExportedAt > latest ? item.sourceExportedAt : latest,
+    null,
+  );
 
   function exportInventory() {
     const columns = [
@@ -52,21 +69,36 @@ export function InventoryPageClient() {
   }
 
   return (
-    <>
+    <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Consulta central"
         title="Inventario"
-        description="Busca rápido por SKU o producto y filtra por línea o disponibilidad."
-        icon={PackageSearch}
-        action={
-          <Button
-            variant="outline"
-            onClick={exportInventory}
-            disabled={data.current.length === 0}
-          >
-            <Download data-icon="inline-start" />
-            Exportar inventario
-          </Button>
+        subtitle={
+          <>
+            {referenceCount.toLocaleString("es-CO")} referencias
+            {latestExportedAt && (
+              <> · carga del {dateTime.format(new Date(latestExportedAt))}</>
+            )}
+          </>
+        }
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={exportInventory}
+              disabled={data.current.length === 0}
+            >
+              <Download data-icon="inline-start" />
+              Exportar
+            </Button>
+            {canUpload && (
+              <Button asChild>
+                <Link href="/uploads">
+                  <Upload data-icon="inline-start" />
+                  Cargar inventario
+                </Link>
+              </Button>
+            )}
+          </>
         }
       />
       <InventoryTable
@@ -76,6 +108,6 @@ export function InventoryPageClient() {
         initialLine={initialLine}
         initialQuery={initialQuery}
       />
-    </>
+    </div>
   );
 }

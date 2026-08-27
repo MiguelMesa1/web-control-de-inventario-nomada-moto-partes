@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { requireJsonRequest, requireSameOrigin } from "./request";
+import { readBoundedBody, requireMultipartRequest, requireJsonRequest, requireSameOrigin, RequestBodyTooLargeError } from "./request";
 
 describe("request write protections", () => {
+  it("rejects multipart bytes without a Content-Length header before parsing", async () => {
+    const request = new Request("https://inventario.example/api/attachments", {
+      method: "POST", headers: { origin: "https://inventario.example", "content-type": "multipart/form-data; boundary=test" },
+      body: "x".repeat(101),
+    });
+    expect(requireMultipartRequest(request, 100)).toBeNull();
+    await expect(readBoundedBody(request)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+  });
   it("rejects a cross-origin state-changing request", () => {
     const response = requireSameOrigin(
       new Request("https://inventario.example/api/settings", {

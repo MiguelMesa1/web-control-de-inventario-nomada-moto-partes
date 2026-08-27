@@ -198,5 +198,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Los archivos públicos deben quedar fuera de la sesión: el navegador y el
+  // optimizador de imágenes los solicitan sin las cookies de autenticación.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };

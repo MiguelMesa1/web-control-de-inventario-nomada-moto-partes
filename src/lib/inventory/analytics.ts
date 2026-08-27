@@ -8,6 +8,8 @@ import type {
 const itemKey = (item: Pick<InventoryItem, "sku" | "warehouse">) =>
   `${item.sku}::${item.warehouse}`;
 
+export type InventoryTrendPoint = Pick<InventoryHistoryPoint, "snapshotId" | "date" | "productLine" | "available">;
+
 export function aggregateLineMetrics(
   current: InventoryItem[],
   previous: InventoryItem[],
@@ -111,7 +113,7 @@ export function summarizeNegativeMovementsByLine(
 }
 
 export function buildInventoryTrend(
-  history: InventoryHistoryPoint[],
+  history: InventoryTrendPoint[],
   current: InventoryItem[],
   productLines?: readonly string[],
 ) {

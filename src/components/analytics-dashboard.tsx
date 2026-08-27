@@ -8,18 +8,17 @@ import {
   Layers3,
   ListFilter,
   PackageMinus,
+  PackagePlus,
   RotateCcw,
   Shapes,
   TrendingDown,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   XAxis,
@@ -58,6 +57,7 @@ import {
   buildInventoryTrend,
   calculateProductMovements,
   summarizeNegativeMovementsByLine,
+  type InventoryTrendPoint,
 } from "@/lib/inventory/analytics";
 import { historySnapshotToInventory } from "@/lib/inventory/history";
 import {
@@ -65,6 +65,7 @@ import {
   isPriorityProductLine,
   PRIORITY_PRODUCT_LINES,
 } from "@/lib/inventory/priority-lines";
+import { cn } from "@/lib/utils";
 import type { InventoryHistoryPoint, InventoryItem } from "@/types/inventory";
 
 const chartColors = [
@@ -79,12 +80,16 @@ const movementConfig = {
   unitsOut: { label: "Unidades que salieron", color: "hsl(var(--destructive))" },
 } satisfies ChartConfig;
 
+const movementInConfig = {
+  unitsIn: { label: "Unidades que entraron", color: "hsl(var(--success))" },
+} satisfies ChartConfig;
+
 const lineConfig = {
   unitsOut: { label: "Unidades que salieron", color: "hsl(var(--destructive))" },
 } satisfies ChartConfig;
 
 const trendConfig = {
-  available: { label: "Unidades disponibles", color: "hsl(var(--chart-1))" },
+  available: { label: "Unidades disponibles", color: "hsl(var(--primary))" },
 } satisfies ChartConfig;
 
 function inventoryAtDate(
@@ -122,6 +127,10 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("es-CO").format(value);
 }
 
+function formatPercent(value: number) {
+  return new Intl.NumberFormat("es-CO", { maximumFractionDigits: 1 }).format(value);
+}
+
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("es-CO", {
     day: "numeric",
@@ -138,19 +147,23 @@ function shortenProductName(value: string, maxLength = 22) {
 function MovementTooltipContent({
   active,
   payload,
+  direction = "out",
 }: {
   active?: boolean;
+  direction?: "out" | "in";
   payload?: Array<{
     payload?: {
       productLine?: string;
       productName?: string;
       sku?: string;
       unitsOut?: number;
+      unitsIn?: number;
     };
   }>;
 }) {
   const item = payload?.[0]?.payload;
   if (!active || !item) return null;
+  const value = direction === "out" ? item.unitsOut : item.unitsIn;
 
   return (
     <div className="grid max-w-72 gap-2 rounded-xl border bg-popover p-3 text-sm text-popover-foreground shadow-xl">
@@ -161,9 +174,17 @@ function MovementTooltipContent({
         <p className="mt-1 font-semibold leading-snug">{item.productName}</p>
       </div>
       <div className="flex items-center justify-between gap-4 border-t pt-2">
-        <span className="text-xs text-muted-foreground">Unidades que salieron</span>
-        <span className="font-mono font-bold tabular-nums text-destructive">
-          −{formatNumber(item.unitsOut ?? 0)}
+        <span className="text-xs text-muted-foreground">
+          {direction === "out" ? "Unidades que salieron" : "Unidades que entraron"}
+        </span>
+        <span
+          className={cn(
+            "font-mono font-bold tabular-nums",
+            direction === "out" ? "text-destructive" : "text-success",
+          )}
+        >
+          {direction === "out" ? "−" : "+"}
+          {formatNumber(value ?? 0)}
         </span>
       </div>
     </div>
@@ -173,9 +194,13 @@ function MovementTooltipContent({
 export function AnalyticsDashboard({
   current,
   history,
+  trend = history,
+  isDemo = false,
 }: {
   current: InventoryItem[];
   history: InventoryHistoryPoint[];
+  trend?: InventoryTrendPoint[];
+  isDemo?: boolean;
 }) {
   const [line, setLine] = useState(() =>
     current.some((item) => isPriorityProductLine(item.productLine))
@@ -195,6 +220,30 @@ export function AnalyticsDashboard({
   const [fromDate, setFromDate] = useState(defaultFrom);
   const [toDate, setToDate] = useState(defaultTo);
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
+  type RangeData = { history: InventoryHistoryPoint[]; fromSnapshotId: string | null; toSnapshotId: string | null };
+  const [rangeResult, setRangeResult] = useState<{ key: string; data?: RangeData; error?: string } | null>(null);
+  const rangeKey = `${current[0]?.snapshotId ?? ""}:${fromDate}:${toDate}`;
+  const rangeRequested = comparison === "range" && !isDemo;
+  const rangeLoading = rangeRequested && rangeResult?.key !== rangeKey;
+  const rangeError = rangeRequested && rangeResult?.key === rangeKey ? rangeResult.error : undefined;
+
+  useEffect(() => {
+    if (!rangeRequested) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/inventory/analytics-range?${new URLSearchParams({ from: fromDate, to: toDate })}`, {
+          signal: controller.signal, cache: "no-store",
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message ?? "No pudimos consultar ese periodo.");
+        if (!controller.signal.aborted) setRangeResult({ key: rangeKey, data: payload });
+      } catch (error) {
+        if (!controller.signal.aborted) setRangeResult({ key: rangeKey, error: error instanceof Error ? error.message : "No pudimos consultar ese periodo." });
+      }
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [rangeRequested, rangeKey, fromDate, toDate]);
 
   const availableLines = [...new Set(current.map((item) => item.productLine))]
     .sort(compareProductLines);
@@ -206,31 +255,48 @@ export function AnalyticsDashboard({
   );
 
   const analytics = useMemo(() => {
+    const rangeData = rangeResult?.key === rangeKey ? rangeResult.data : undefined;
+    const rangeInventory = (id: string | null | undefined) => id && rangeData
+      ? historySnapshotToInventory(rangeData.history.filter((point) => point.snapshotId === id), current)
+      : [];
     const comparisonItems =
       comparison === "range"
-        ? inventoryAtDate(fromDate, current, history)
+        ? isDemo ? inventoryAtDate(fromDate, current, history) : rangeInventory(rangeData?.fromSnapshotId)
         : historySnapshotToInventory(history, current);
     const endItems =
       comparison === "range"
-        ? inventoryAtDate(toDate, current, history)
+        ? isDemo ? inventoryAtDate(toDate, current, history) : rangeInventory(rangeData?.toSnapshotId)
         : current;
-    const negativeMovements = calculateProductMovements(
-      endItems,
-      comparisonItems,
-    )
-      .filter(
-        (item) =>
-          item.change < 0 &&
-          (line === "all" ||
-            (line === "priority" && isPriorityProductLine(item.productLine)) ||
-            item.productLine === line),
-      )
+    const matchesLine = (productLine: string) =>
+      line === "all" ||
+      (line === "priority" && isPriorityProductLine(productLine)) ||
+      productLine === line;
+    const movements = calculateProductMovements(endItems, comparisonItems).filter(
+      (item) => matchesLine(item.productLine),
+    );
+    const negativeMovements = movements
+      .filter((item) => item.change < 0)
       .sort((a, b) => a.change - b.change);
+    const positiveMovements = movements
+      .filter((item) => item.change > 0)
+      .sort((a, b) => b.change - a.change);
+    const scopedReferences = endItems.filter((item) =>
+      matchesLine(item.productLine),
+    ).length;
+    const unchangedReferences = Math.max(
+      0,
+      scopedReferences - negativeMovements.length - positiveMovements.length,
+    );
 
     const movementChart = negativeMovements.slice(0, 12).map((item) => ({
       ...item,
       label: shortenProductName(item.productName),
       unitsOut: Math.abs(item.change),
+    }));
+    const movementChartIn = positiveMovements.slice(0, 12).map((item) => ({
+      ...item,
+      label: shortenProductName(item.productName),
+      unitsIn: item.change,
     }));
     const lineBreakdown = compactLineBreakdown(
       summarizeNegativeMovementsByLine(negativeMovements),
@@ -242,7 +308,7 @@ export function AnalyticsDashboard({
           ? PRIORITY_PRODUCT_LINES
           : [line];
     const inventoryTrend = buildInventoryTrend(
-      history,
+      trend,
       current,
       selectedProductLines,
     ).map((point) => ({
@@ -253,15 +319,20 @@ export function AnalyticsDashboard({
     return {
       comparisonAvailable: comparisonItems.length > 0,
       negativeMovements,
+      positiveMovements,
       movementChart,
+      movementChartIn,
       lineBreakdown,
       inventoryTrend,
+      scopedReferences,
+      unchangedReferences,
       totalUnitsOut: negativeMovements.reduce(
         (sum, item) => sum + Math.abs(item.change),
         0,
       ),
+      totalUnitsIn: positiveMovements.reduce((sum, item) => sum + item.change, 0),
     };
-  }, [comparison, current, fromDate, history, line, toDate]);
+  }, [comparison, current, fromDate, history, line, toDate, trend, isDemo, rangeResult, rangeKey]);
 
   const largestDrop = analytics.negativeMovements[0];
   const averageUnitsOut = analytics.negativeMovements.length
@@ -292,6 +363,10 @@ export function AnalyticsDashboard({
   const hasCustomFilters =
     line !== (availablePriorityLines.length > 0 ? "priority" : "all") ||
     comparison !== "previous";
+  const balanceMax = Math.max(analytics.totalUnitsOut, analytics.totalUnitsIn, 1);
+  const unchangedPercent = analytics.scopedReferences
+    ? (analytics.unchangedReferences / analytics.scopedReferences) * 100
+    : 0;
 
   function resetFilters() {
     setLine(availablePriorityLines.length > 0 ? "priority" : "all");
@@ -309,19 +384,21 @@ export function AnalyticsDashboard({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" aria-busy={rangeLoading}>
       <PageHeader
-        eyebrow="Decisiones con datos"
-        title="Analíticas de inventario"
-        description="Entiende la tendencia general, detecta dónde se concentra la salida de unidades y abre el detalle de cada referencia. Los movimientos representan cambios de inventario, no necesariamente ventas."
-        icon={ChartNoAxesCombined}
+        title="Analítica"
+        subtitle={
+          <>
+            {comparisonLabel} · {selectedLineLabel}
+          </>
+        }
       />
 
-      <Card className="overflow-hidden border-primary/25 bg-gradient-to-br from-card via-card to-primary/[0.06]">
+      <Card className="overflow-hidden">
         <CardHeader className="gap-3 pb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary-foreground dark:text-primary">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <ListFilter className="size-4" aria-hidden="true" />
                 Ajusta el análisis
               </div>
@@ -353,7 +430,7 @@ export function AnalyticsDashboard({
               1. Línea de producto
             </Label>
             <Select value={line} onValueChange={setLine}>
-              <SelectTrigger id="analytics-line" className="h-12 bg-background">
+              <SelectTrigger id="analytics-line" className="h-11 bg-background">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -391,20 +468,20 @@ export function AnalyticsDashboard({
               2. Periodo de comparación
             </Label>
             <Tabs value={comparison} onValueChange={setComparison}>
-              <TabsList className="grid h-12 w-full grid-cols-2">
+              <TabsList className="grid h-11 w-full grid-cols-2">
                 <TabsTrigger value="previous">Últimas cargas</TabsTrigger>
                 <TabsTrigger value="range">Elegir fechas</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
           {comparison === "range" ? (
-            <div className="grid gap-4 rounded-xl border border-primary/20 bg-background/80 p-4 sm:grid-cols-2 lg:col-span-2">
+            <div className="grid gap-4 rounded-xl border bg-background/80 p-4 sm:grid-cols-2 lg:col-span-2">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="from-date">Fecha inicial</Label>
                 <Input
                   id="from-date"
                   type="date"
-                  className="h-12"
+                  className="h-11"
                   value={fromDate}
                   max={toDate}
                   onChange={(event) => setFromDate(event.target.value)}
@@ -415,7 +492,7 @@ export function AnalyticsDashboard({
                 <Input
                   id="to-date"
                   type="date"
-                  className="h-12"
+                  className="h-11"
                   value={toDate}
                   min={fromDate}
                   max={defaultTo}
@@ -424,17 +501,23 @@ export function AnalyticsDashboard({
               </div>
             </div>
           ) : null}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-secondary px-4 py-3 text-sm text-secondary-foreground lg:col-span-2">
+          <div
+            className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border px-4 py-3 text-sm lg:col-span-2"
+            style={{ borderWidth: 1.5 }}
+          >
             <span className="font-semibold">Viendo:</span>
             <span>{selectedLineLabel}</span>
-            <span className="text-secondary-foreground/45" aria-hidden="true">•</span>
+            <span className="text-muted-foreground" aria-hidden="true">•</span>
             <span>{comparisonLabel}</span>
           </div>
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen del análisis">
-        <Card className="border-destructive/20">
+      {rangeLoading ? <p role="status" className="text-sm text-muted-foreground">Consultando las cargas del periodo…</p> : null}
+      {rangeError ? <p role="alert" className="text-sm text-destructive">{rangeError} Cambia las fechas o vuelve a seleccionar el periodo para reintentar.</p> : null}
+
+      <section className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen del análisis">
+        <Card className="shadow-[inset_3px_0_0_hsl(var(--destructive))]">
           <CardContent className="flex items-center gap-3 p-4 sm:p-5">
             <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-destructive/10 text-destructive">
               <PackageMinus className="size-5" aria-hidden="true" />
@@ -450,7 +533,7 @@ export function AnalyticsDashboard({
         </Card>
         <Card>
           <CardContent className="flex items-center gap-3 p-4 sm:p-5">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary-foreground dark:text-primary">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-foreground">
               <Shapes className="size-5" aria-hidden="true" />
             </span>
             <div>
@@ -494,6 +577,49 @@ export function AnalyticsDashboard({
         </Card>
       </section>
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="font-display text-lg uppercase">Balance de la carga</CardTitle>
+          <CardDescription>Unidades que salieron frente a las que entraron en la comparación elegida.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <div className="mb-1.5 flex items-baseline justify-between">
+                <span className="text-sm font-semibold">Salieron</span>
+                <span className="font-display text-2xl tabular-nums text-destructive">
+                  {formatNumber(analytics.totalUnitsOut)}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-destructive"
+                  style={{ width: `${(analytics.totalUnitsOut / balanceMax) * 100}%` }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="mb-1.5 flex items-baseline justify-between">
+                <span className="text-sm font-semibold">Entraron</span>
+                <span className="font-display text-2xl tabular-nums text-success">
+                  {formatNumber(analytics.totalUnitsIn)}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-success"
+                  style={{ width: `${(analytics.totalUnitsIn / balanceMax) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {formatNumber(analytics.unchangedReferences)} referencias sin cambio
+            {analytics.scopedReferences > 0 && ` (${formatPercent(unchangedPercent)}%)`}
+          </p>
+        </CardContent>
+      </Card>
+
       <section className="flex flex-col gap-3" aria-labelledby="analytics-overview-title">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -527,7 +653,7 @@ export function AnalyticsDashboard({
                     className={
                       trendChange < 0
                         ? "gap-1.5 border-destructive/30 bg-destructive/5 text-destructive"
-                        : "gap-1.5 border-primary/35 bg-primary/10 text-foreground"
+                        : "gap-1.5 border-success/35 bg-success/10 text-success"
                     }
                   >
                     {trendChange < 0 ? (
@@ -549,7 +675,7 @@ export function AnalyticsDashboard({
                     role="img"
                     aria-label={`Tendencia de inventario entre ${firstTrendLabel} y ${lastTrendLabel}; cambio de ${formatNumber(trendChange)} unidades.`}
                   >
-                    <LineChart
+                    <BarChart
                       accessibilityLayer
                       data={analytics.inventoryTrend}
                       margin={{ left: 4, right: 16, top: 12, bottom: 4 }}
@@ -570,22 +696,25 @@ export function AnalyticsDashboard({
                         width={58}
                       />
                       <ChartTooltip
-                        cursor={{ stroke: "hsl(var(--border))", strokeDasharray: "4 4" }}
+                        cursor={{ fill: "hsl(var(--muted) / 0.45)" }}
                         content={<ChartTooltipContent indicator="line" />}
                       />
-                      <Line
-                        type="monotone"
-                        dataKey="available"
-                        stroke="var(--color-available)"
-                        strokeWidth={3}
-                        dot={{ r: 3, fill: "var(--color-available)", strokeWidth: 0 }}
-                        activeDot={{ r: 6, strokeWidth: 2, stroke: "hsl(var(--background))" }}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
+                      <Bar dataKey="available" radius={[5, 5, 0, 0]} isAnimationActive={false}>
+                        {analytics.inventoryTrend.map((point, index) => {
+                          const lastIndex = analytics.inventoryTrend.length - 1;
+                          const fill =
+                            index === lastIndex
+                              ? "hsl(var(--primary))"
+                              : index === lastIndex - 1
+                                ? "hsl(var(--border))"
+                                : "hsl(var(--muted))";
+                          return <Cell key={point.date} fill={fill} />;
+                        })}
+                      </Bar>
+                    </BarChart>
                   </ChartContainer>
                   <div className="mt-4 flex items-start gap-3 rounded-xl border bg-muted/20 p-4">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary-foreground dark:text-primary">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
                       <ChartNoAxesCombined className="size-4" aria-hidden="true" />
                     </span>
                     <div>
@@ -697,117 +826,205 @@ export function AnalyticsDashboard({
         </div>
       </section>
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/15 pb-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle>
-                <h2 className="font-display text-2xl uppercase">
-                  ¿Qué productos tuvieron mayor salida?
-                </h2>
-              </CardTitle>
-              <CardDescription className="mt-2 max-w-3xl">
-                El nombre del producto aparece a la izquierda de cada barra. Pasa el cursor para verlo completo o toca una barra o tarjeta para abrir su historial.
-              </CardDescription>
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/15 pb-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>
+                  <h2 className="font-display text-xl uppercase">Mayores salidas</h2>
+                </CardTitle>
+                <CardDescription className="mt-1">Toca una barra o tarjeta para abrir su historial.</CardDescription>
+              </div>
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                Top {analytics.movementChart.length}
+              </Badge>
             </div>
-            <Badge variant="secondary" className="self-start tabular-nums">
-              Top {analytics.movementChart.length}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-5 pt-5 sm:pt-6">
-          {analytics.movementChart.length > 0 ? (
-            <>
-              <ChartContainer
-                config={movementConfig}
-                className="h-[360px] min-h-[360px] w-full sm:h-[420px] sm:min-h-[420px]"
-                role="img"
-                aria-label={`Ranking de ${analytics.movementChart.length} productos con disminución de inventario; ${formatNumber(analytics.totalUnitsOut)} unidades salieron en total.`}
-              >
-                <BarChart
-                  accessibilityLayer
-                  data={analytics.movementChart}
-                  layout="vertical"
-                  margin={{ left: 4, right: 28 }}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5 pt-5 sm:pt-6">
+            {analytics.movementChart.length > 0 ? (
+              <>
+                <ChartContainer
+                  config={movementConfig}
+                  className="h-[320px] min-h-[320px] w-full"
+                  role="img"
+                  aria-label={`Ranking de ${analytics.movementChart.length} productos con disminución de inventario; ${formatNumber(analytics.totalUnitsOut)} unidades salieron en total.`}
                 >
-                  <CartesianGrid horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <YAxis
-                    dataKey="label"
-                    type="category"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11 }}
-                    tickMargin={8}
-                    width={152}
-                  />
-                  <ChartTooltip
-                    cursor={{ fill: "hsl(var(--muted) / 0.55)" }}
-                    content={<MovementTooltipContent />}
-                  />
-                  <Bar
-                    dataKey="unitsOut"
-                    fill="hsl(var(--destructive))"
-                    radius={[0, 7, 7, 0]}
-                    className="cursor-pointer"
-                    onClick={(entry: { sku?: string; warehouse?: string }) => {
-                      if (entry.sku && entry.warehouse) {
-                        openProductHistory(entry.sku, entry.warehouse);
-                      }
-                    }}
-                  />
-                </BarChart>
-              </ChartContainer>
-
-              <div className="data-list grid gap-3 md:grid-cols-2">
-                {analytics.movementChart.slice(0, 8).map((item, index) => (
-                  <button
-                    key={`${item.sku}-${item.warehouse}`}
-                    type="button"
-                    onClick={() => openProductHistory(item.sku, item.warehouse)}
-                    className="group flex min-h-20 cursor-pointer items-center justify-between gap-3 rounded-xl border p-3.5 text-left transition-colors duration-200 hover:border-destructive/35 hover:bg-destructive/[0.04] sm:p-4"
+                  <BarChart
+                    accessibilityLayer
+                    data={analytics.movementChart}
+                    layout="vertical"
+                    margin={{ left: 4, right: 28 }}
                   >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted font-mono text-xs font-bold text-muted-foreground transition-colors group-hover:bg-destructive/10 group-hover:text-destructive">
-                      {index + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-xs font-bold text-muted-foreground">
-                        {item.sku} · {item.productLine}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-sm font-semibold sm:text-base">{item.productName}</p>
-                    </div>
-                    <Badge variant="destructive" className="shrink-0 gap-1 tabular-nums">
-                      <ArrowDownRight className="size-3.5" aria-hidden="true" />
-                      {item.change}
-                    </Badge>
-                  </button>
-                ))}
+                    <CartesianGrid horizontal={false} />
+                    <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
+                    <YAxis
+                      dataKey="label"
+                      type="category"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11 }}
+                      tickMargin={8}
+                      width={140}
+                    />
+                    <ChartTooltip
+                      cursor={{ fill: "hsl(var(--muted) / 0.55)" }}
+                      content={<MovementTooltipContent direction="out" />}
+                    />
+                    <Bar
+                      dataKey="unitsOut"
+                      fill="hsl(var(--destructive))"
+                      radius={[0, 7, 7, 0]}
+                      className="cursor-pointer"
+                      onClick={(entry: { sku?: string; warehouse?: string }) => {
+                        if (entry.sku && entry.warehouse) {
+                          openProductHistory(entry.sku, entry.warehouse);
+                        }
+                      }}
+                    />
+                  </BarChart>
+                </ChartContainer>
+                <div className="data-list grid gap-2">
+                  {analytics.movementChart.slice(0, 5).map((item, index) => (
+                    <button
+                      key={`${item.sku}-${item.warehouse}`}
+                      type="button"
+                      onClick={() => openProductHistory(item.sku, item.warehouse)}
+                      className="group flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors duration-200 hover:border-destructive/35 hover:bg-destructive/[0.04]"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted font-mono text-xs font-bold text-muted-foreground">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{item.productName}</p>
+                          <p className="truncate text-xs text-muted-foreground">{item.sku} → {formatNumber(item.previous)} → {formatNumber(item.current)}</p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-destructive">{item.change}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="grid min-h-52 place-items-center rounded-xl border border-dashed bg-muted/20 p-6 text-center">
+                <div className="max-w-md">
+                  <TrendingDown className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden="true" />
+                  <p className="font-semibold">
+                    {analytics.comparisonAvailable
+                      ? "No hubo disminuciones en esta comparación"
+                      : "Aún no existe una carga anterior comparable"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {analytics.comparisonAvailable
+                      ? "Prueba otra línea o cambia el rango de fechas."
+                      : "Cuando publiques una nueva carga, aquí verás los productos que bajaron."}
+                  </p>
+                </div>
               </div>
-            </>
-          ) : (
-            <div className="grid min-h-52 place-items-center rounded-xl border border-dashed bg-muted/20 p-6 text-center">
-              <div className="max-w-md">
-                <TrendingDown className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden="true" />
-                <p className="font-semibold">
-                  {analytics.comparisonAvailable
-                    ? "No hubo disminuciones en esta comparación"
-                    : "Aún no existe una carga anterior comparable"}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {analytics.comparisonAvailable
-                    ? "Prueba otra línea o cambia el rango de fechas."
-                    : "Cuando publiques una nueva carga, aquí verás los productos que bajaron."}
-                </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/15 pb-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>
+                  <h2 className="font-display text-xl uppercase">Mayores entradas</h2>
+                </CardTitle>
+                <CardDescription className="mt-1">Toca una barra o tarjeta para abrir su historial.</CardDescription>
               </div>
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                Top {analytics.movementChartIn.length}
+              </Badge>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5 pt-5 sm:pt-6">
+            {analytics.movementChartIn.length > 0 ? (
+              <>
+                <ChartContainer
+                  config={movementInConfig}
+                  className="h-[320px] min-h-[320px] w-full"
+                  role="img"
+                  aria-label={`Ranking de ${analytics.movementChartIn.length} productos con aumento de inventario; ${formatNumber(analytics.totalUnitsIn)} unidades entraron en total.`}
+                >
+                  <BarChart
+                    accessibilityLayer
+                    data={analytics.movementChartIn}
+                    layout="vertical"
+                    margin={{ left: 4, right: 28 }}
+                  >
+                    <CartesianGrid horizontal={false} />
+                    <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
+                    <YAxis
+                      dataKey="label"
+                      type="category"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11 }}
+                      tickMargin={8}
+                      width={140}
+                    />
+                    <ChartTooltip
+                      cursor={{ fill: "hsl(var(--muted) / 0.55)" }}
+                      content={<MovementTooltipContent direction="in" />}
+                    />
+                    <Bar
+                      dataKey="unitsIn"
+                      fill="hsl(var(--success))"
+                      radius={[0, 7, 7, 0]}
+                      className="cursor-pointer"
+                      onClick={(entry: { sku?: string; warehouse?: string }) => {
+                        if (entry.sku && entry.warehouse) {
+                          openProductHistory(entry.sku, entry.warehouse);
+                        }
+                      }}
+                    />
+                  </BarChart>
+                </ChartContainer>
+                <div className="data-list grid gap-2">
+                  {analytics.movementChartIn.slice(0, 5).map((item, index) => (
+                    <button
+                      key={`${item.sku}-${item.warehouse}`}
+                      type="button"
+                      onClick={() => openProductHistory(item.sku, item.warehouse)}
+                      className="group flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors duration-200 hover:border-success/35 hover:bg-success/[0.04]"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted font-mono text-xs font-bold text-muted-foreground">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{item.productName}</p>
+                          <p className="truncate text-xs text-muted-foreground">{item.sku} → {formatNumber(item.previous)} → {formatNumber(item.current)}</p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-success">+{item.change}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="grid min-h-52 place-items-center rounded-xl border border-dashed bg-muted/20 p-6 text-center">
+                <div className="max-w-md">
+                  <PackagePlus className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden="true" />
+                  <p className="font-semibold">
+                    {analytics.comparisonAvailable
+                      ? "No hubo aumentos en esta comparación"
+                      : "Aún no existe una carga anterior comparable"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {analytics.comparisonAvailable
+                      ? "Prueba otra línea o cambia el rango de fechas."
+                      : "Cuando publiques una nueva carga, aquí verás los productos que subieron."}
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
 
       <ProductHistorySheet
         item={historyItem}

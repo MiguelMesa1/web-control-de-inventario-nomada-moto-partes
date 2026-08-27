@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { sanitizeText } from "@/lib/security/input";
-import { requireMultipartRequest } from "@/lib/security/request";
+import { readBoundedBody, RequestBodyTooLargeError, requireMultipartRequest } from "@/lib/security/request";
 import { recordAuditEvent } from "@/lib/security/audit";
 
 const allowedMimeTypes = new Set([
@@ -59,7 +59,17 @@ export async function POST(request: Request) {
   if (profile.role !== "admin" && profile.role !== "uploader") {
     return NextResponse.json({ message: "No tienes acceso a documentos internos." }, { status: 403 });
   }
-  const formData = await request.formData();
+  let formData: FormData;
+  try {
+    const bytes = await readBoundedBody(request);
+    formData = await new Response(bytes, {
+      headers: { "content-type": request.headers.get("content-type")! },
+    }).formData();
+  } catch (error) {
+    return NextResponse.json({ message: "El formulario no es válido o supera el tamaño permitido." }, {
+      status: error instanceof RequestBodyTooLargeError ? 413 : 400,
+    });
+  }
   const sku = sanitizeText(formData.get("sku"), { maxLength: 120 });
   const file = formData.get("file");
   if (!sku || !(file instanceof File)) {

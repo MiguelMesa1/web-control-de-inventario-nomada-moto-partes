@@ -1,18 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  after,
+  revalidatePath,
+  consumeDistributedRateLimit,
   createInsForgeServerClient,
   getAppProfile,
   loadActiveOrderSkus,
   recordEmailDeliveryAttempt,
   sendBrevoEmail,
 } = vi.hoisted(() => ({
+  after: vi.fn(),
+  revalidatePath: vi.fn(),
+  consumeDistributedRateLimit: vi.fn(),
   createInsForgeServerClient: vi.fn(),
   getAppProfile: vi.fn(),
   loadActiveOrderSkus: vi.fn(),
   recordEmailDeliveryAttempt: vi.fn(),
   sendBrevoEmail: vi.fn(),
 }));
+
+vi.mock("next/server", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/server")>(), after,
+}));
+vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("@/lib/security/distributed-rate-limit", () => ({ consumeDistributedRateLimit }));
 
 vi.mock("@/lib/email/brevo-smtp", () => ({ sendBrevoEmail }));
 vi.mock("@/lib/email/delivery-attempts", () => ({
@@ -49,6 +61,7 @@ describe("POST /api/inventory/import", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    consumeDistributedRateLimit.mockResolvedValue({ allowed: true });
     getAppProfile.mockResolvedValue({
       id: "user-1",
       email: "admin@example.com",
@@ -63,6 +76,28 @@ describe("POST /api/inventory/import", () => {
     });
     recordEmailDeliveryAttempt.mockResolvedValue(undefined);
     loadActiveOrderSkus.mockResolvedValue([]);
+  });
+
+  it("rejects uploads from viewers before reading or writing data", async () => {
+    getAppProfile.mockResolvedValueOnce({ id: "viewer", role: "viewer" });
+    const response = await POST(new Request("https://inventario.example/api/inventory/import", {
+      method: "POST", headers: { origin: "https://inventario.example", "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
+    }));
+    expect(response.status).toBe(403);
+    expect(createInsForgeServerClient).not.toHaveBeenCalled();
+  });
+
+  it("enforces the distributed per-user import limit before publication", async () => {
+    consumeDistributedRateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 45 });
+    const response = await POST(new Request("https://inventario.example/api/inventory/import", {
+      method: "POST", headers: { origin: "https://inventario.example", "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
+    }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("45");
+    expect(createInsForgeServerClient).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
   });
 
   it("mantiene la publicación exitosa si falla el cálculo de recompra", async () => {
@@ -99,12 +134,13 @@ describe("POST /api/inventory/import", () => {
       }),
     );
     const payload = await response.json();
+    expect(after).toHaveBeenCalledOnce();
+    await after.mock.calls[0][0]();
 
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({
       data: "snapshot-1",
-      reorderCount: 0,
-      reorderWarning: "No pudimos consultar la recompra.",
+      notificationsPending: true,
     });
   });
 
@@ -157,12 +193,16 @@ describe("POST /api/inventory/import", () => {
       }),
     );
     const payload = await response.json();
+    // No SMTP or notification queries on the critical response path.
+    expect(sendBrevoEmail).not.toHaveBeenCalled();
+    expect(recordEmailDeliveryAttempt).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith("/(app)", "layout");
+    await after.mock.calls[0][0]();
 
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({
       data: "snapshot-success",
-      reorderCount: 1,
-      emailRecipient: "admin@example.com",
+      notificationsPending: true,
     });
     expect(recordEmailDeliveryAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -226,11 +266,12 @@ describe("POST /api/inventory/import", () => {
       }),
     );
     const payload = await response.json();
+    await after.mock.calls[0][0]();
 
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({
       data: "snapshot-active",
-      reorderCount: 0,
+      notificationsPending: true,
     });
     expect(sendBrevoEmail).not.toHaveBeenCalled();
     expect(recordEmailDeliveryAttempt).not.toHaveBeenCalled();
@@ -288,6 +329,7 @@ describe("POST /api/inventory/import", () => {
       }),
     );
     const payload = await response.json();
+    await after.mock.calls[0][0]();
 
     expect(response.status).toBe(200);
     expect(sendBrevoEmail).toHaveBeenCalledWith(
@@ -298,9 +340,7 @@ describe("POST /api/inventory/import", () => {
     );
     expect(payload).toMatchObject({
       data: "snapshot-2",
-      reorderCount: 1,
-      emailRecipient: "admin@example.com",
-      emailWarning: "El servicio de correo no está disponible.",
+      notificationsPending: true,
     });
     expect(recordEmailDeliveryAttempt).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -16,13 +16,17 @@
     --secondary: 60 1% 17%;
     --secondary-foreground: 0 0% 100%;
     --muted: 0 0% 93%;
-    --muted-foreground: 0 0% 35%;
+    /* Rediseño: #8E8E8A (texto terciario / meta) — antes 0 0% 35%, mucho más oscuro que lo que el sistema pide para SKU, labels y cifras secundarias. */
+    --muted-foreground: 60 2% 55%;
     --accent: 57 100% 47%;
     --accent-foreground: 60 1% 7%;
-    --destructive: 0 72% 45%;
+    /* #C51F1F */
+    --destructive: 0 73% 45%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 84%;
-    --input: 0 0% 84%;
+    /* Rediseño: #E4E4E1 — separado de --input (antes ambos compartían 84%). */
+    --border: 60 5% 89%;
+    /* #D6D6D3 */
+    --input: 60 4% 83%;
     --ring: 57 100% 42%;
     --radius: 0.9rem;
     --chart-1: 57 100% 47%;
@@ -30,29 +34,69 @@
     --chart-3: 198 75% 48%;
     --chart-4: 28 90% 55%;
     --chart-5: 0 72% 51%;
+
+    /* --- Tokens nuevos del rediseño visual (README §"Design Tokens") --- */
+    /* Ámbar de texto para advertencias (bajo, trazabilidad). #8A7F00 */
+    --warning: 55 100% 27%;
+    /* Verde de estados positivos (deltas, "entraron"). #3F9142 */
+    --success: 122 39% 41%;
+    /* Texto secundario de fila/nav, un peldaño bajo --foreground. #3F3F3D */
+    --foreground-secondary: 60 2% 24%;
+    /* Label/eyebrow de menor jerarquía que --muted-foreground. #8E8E8A en claro (igual que muted-foreground; el cuarto peldaño solo se distingue en oscuro). */
+    --label-foreground: 60 2% 55%;
+    /* Fondo de fila alterna (zebra) en tablas. #FCFCFB */
+    --row-alt: 60 14% 99%;
+    /* Fondo de encabezado de tabla sticky. #FAFAF9 */
+    --table-header: 60 9% 98%;
+    /* Separador de fila, más sutil que --border. #F4F4F1 */
+    --row-separator: 60 12% 95%;
   }
 
   .dark {
     color-scheme: dark;
-    --background: 60 2% 5%;
-    --foreground: 0 0% 96%;
-    --card: 60 1% 10%;
-    --card-foreground: 0 0% 96%;
-    --popover: 60 1% 10%;
-    --popover-foreground: 0 0% 96%;
+    /* Rediseño: paleta oscura dedicada (README §"Color — modo oscuro"). No negro puro: el amarillo vibra sobre #000. */
+    /* #141413 */
+    --background: 60 3% 8%;
+    /* #F5F5F0 */
+    --foreground: 60 20% 95%;
+    /* #1E1E1D (superficie: tarjetas, tablas) */
+    --card: 60 2% 12%;
+    --card-foreground: 60 20% 95%;
+    --popover: 60 2% 12%;
+    --popover-foreground: 60 20% 95%;
     --primary: 57 100% 47%;
     --primary-foreground: 60 1% 7%;
     --secondary: 60 1% 17%;
     --secondary-foreground: 0 0% 96%;
     --muted: 60 1% 16%;
-    --muted-foreground: 0 0% 69%;
+    /* #8A8A84 (texto terciario) */
+    --muted-foreground: 60 2% 53%;
     --accent: 57 100% 47%;
     --accent-foreground: 60 1% 7%;
-    --destructive: 0 62% 42%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 60 1% 22%;
-    --input: 60 1% 22%;
+    /* #E86A6A — aclarado: #C51F1F no alcanza contraste sobre fondo oscuro */
+    --destructive: 0 73% 66%;
+    --destructive-foreground: 60 1% 7%;
+    /* #2C2C2B */
+    --border: 60 1% 17%;
+    /* #333331 (borde de control, distinto de --border) */
+    --input: 60 2% 20%;
     --ring: 57 100% 47%;
+    /* Sin referencia explícita del README para modo oscuro: mismo hue/valor del claro, aclarado y desaturado igual que rojo/verde. */
+    --warning: 55 60% 62%;
+
+    /* --- Tokens nuevos del rediseño visual (paleta oscura) --- */
+    /* #6FBF73 — aclarado por la misma razón que el rojo */
+    --success: 123 38% 59%;
+    /* #C9C9C4 (texto secundario) */
+    --foreground-secondary: 60 4% 78%;
+    /* #6E6E69 (texto cuaternario / label) */
+    --label-foreground: 60 2% 42%;
+    /* Sin valor propio en el README: leve realce sobre --card, análogo al claro. */
+    --row-alt: 60 1% 14%;
+    /* #262625 (superficie elevada: encabezados de tabla) */
+    --table-header: 60 1% 15%;
+    /* Sin valor propio en el README: leve realce sobre --card, análogo al claro. */
+    --row-separator: 60 1% 15%;
   }
 
   * {
@@ -65,7 +109,6 @@
 
   body {
     @apply min-h-dvh bg-background text-foreground antialiased;
-    background-image: radial-gradient(circle at top right, hsl(var(--primary) / 0.08), transparent 26rem);
     transition: background-color 200ms ease, color 200ms ease;
   }
 
@@ -93,21 +136,11 @@
 }
 
 @layer components {
-  .racing-grid {
+  .dark .racing-grid {
     background-image:
-      linear-gradient(rgba(240, 227, 0, 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(240, 227, 0, 0.035) 1px, transparent 1px);
+      linear-gradient(hsl(var(--primary) / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--primary) / 0.045) 1px, transparent 1px);
     background-size: 32px 32px;
-  }
-
-  .racing-stripe {
-    background-image: repeating-linear-gradient(
-      -58deg,
-      transparent 0,
-      transparent 16px,
-      rgba(240, 227, 0, 0.08) 16px,
-      rgba(240, 227, 0, 0.08) 18px
-    );
   }
 
   .metric-enter {

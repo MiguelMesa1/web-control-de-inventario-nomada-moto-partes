@@ -4,10 +4,13 @@ import { cn } from "@/lib/utils";
 export function BrandMark({
   compact = false,
   transparent = false,
+  dense = false,
   className,
 }: {
   compact?: boolean;
   transparent?: boolean;
+  /** Tighter scale + no glow, for the 52px shell sidebar brand box (rediseño 00 · Shell). */
+  dense?: boolean;
   className?: string;
 }) {
   const source = transparent
@@ -47,6 +50,7 @@ export function BrandMark({
       className={cn(
         "relative h-[4.25rem] w-full max-w-[15.5rem] overflow-hidden rounded-xl shadow-[0_0_28px_rgba(240,227,0,0.16)]",
         !transparent && "bg-black",
+        dense && "shadow-none",
         className,
       )}
       aria-label="Nómada Moto Partes"
@@ -58,7 +62,11 @@ export function BrandMark({
         fill
         priority
         sizes={transparent ? "(min-width: 640px) 368px, 304px" : "248px"}
-        className="scale-[1.17] object-contain"
+        className={cn(
+          "object-contain",
+          dense ? "scale-[1.1]" : "scale-[1.17]",
+          transparent && "mix-blend-screen",
+        )}
       />
     </div>
   );

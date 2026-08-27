@@ -1,11 +1,11 @@
 import { ShieldCheck } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { BrandMark } from "@/components/brand-mark";
 import { LoginForm } from "@/components/login-form";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
 
 export default async function LoginPage({
@@ -16,47 +16,77 @@ export default async function LoginPage({
   const configured = isInsForgeConfigured();
   const passwordUpdated = (await searchParams).password === "updated";
   return (
-    <main className="racing-grid min-h-dvh bg-background text-foreground sm:p-6 lg:p-10">
-      <div className="mx-auto grid min-h-dvh max-w-7xl overflow-hidden bg-card shadow-2xl sm:min-h-[calc(100dvh-3rem)] sm:rounded-[2rem] sm:border sm:border-border lg:min-h-[calc(100dvh-5rem)] xl:grid-cols-[1.08fr_0.92fr]">
-        <section className="racing-stripe relative flex min-h-0 flex-col gap-3 overflow-hidden border-b border-border bg-secondary px-5 py-4 text-secondary-foreground sm:min-h-[28rem] sm:justify-between sm:gap-6 sm:p-10 xl:min-h-[34rem] xl:border-b-0 xl:border-r xl:p-14">
-          <div className="absolute -right-24 -top-24 size-80 rounded-full bg-primary/10 blur-3xl" />
+    <main className="min-h-dvh bg-background text-foreground">
+      <div className="mx-auto grid min-h-dvh max-w-[1600px] xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="relative flex h-[250px] min-h-0 flex-none flex-col justify-between overflow-hidden bg-[#1A1A19] px-6 py-[26px] text-white xl:h-auto xl:min-h-full xl:px-14 xl:py-[52px]">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(240,227,0,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(240,227,0,0.03) 1px, transparent 1px)",
+              backgroundSize: "34px 34px",
+              maskImage: "linear-gradient(to bottom, #000, transparent 80%)",
+              WebkitMaskImage: "linear-gradient(to bottom, #000, transparent 80%)",
+            }}
+            aria-hidden="true"
+          />
+          <Image
+            src="/brand/nomada-mammoth-running-2d.webp"
+            alt=""
+            width={840}
+            height={560}
+            loading="eager"
+            className="pointer-events-none absolute -bottom-4 -right-[30px] w-[230px] opacity-[0.14] xl:-bottom-[30px] xl:-right-10 xl:w-[420px]"
+            aria-hidden="true"
+          />
+
           <BrandMark
             transparent
-            className="relative mx-auto h-12 max-w-[12rem] rounded-lg shadow-[0_0_22px_rgba(240,227,0,0.12)] sm:mx-0 sm:h-24 sm:max-w-[23rem] sm:rounded-xl"
+            className="relative h-10 max-w-[200px] rounded-none shadow-none xl:h-16 xl:max-w-[300px]"
           />
-          <div className="relative max-w-2xl sm:py-10 xl:py-16">
-            <Badge className="mb-3 uppercase tracking-[0.16em] sm:mb-5">
+
+          <div className="relative xl:flex xl:flex-1 xl:flex-col xl:justify-center xl:pb-20">
+            <Badge className="mb-3 w-fit border border-primary/40 bg-transparent px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-primary shadow-none xl:mb-[18px] xl:px-3 xl:text-[11px] xl:tracking-[0.18em]">
               Uso interno
             </Badge>
-            <h1 className="font-display text-3xl font-bold uppercase leading-[0.92] tracking-wide sm:text-6xl">
+            <h1 className="font-display text-[32px] font-extrabold uppercase leading-[0.9] tracking-[0.03em] xl:text-[54px]">
               Control de
               <span className="block text-primary">inventario.</span>
             </h1>
-            <p className="mt-3 hidden max-w-xl text-sm leading-relaxed text-secondary-foreground/80 min-[400px]:block sm:mt-6 sm:text-lg">
-              Consulta existencias, revisa cambios y carga actualizaciones.
+            <p className="mt-5 hidden max-w-[30ch] text-base leading-[1.65] text-white/70 xl:block">
+              Existencias, movimientos y cargas de Nómada Moto Partes en un solo lugar.
             </p>
           </div>
-          <div className="relative flex min-h-9 items-center gap-3 text-xs text-secondary-foreground/80 sm:min-h-11 sm:text-sm">
-            <ShieldCheck className="size-5 text-primary" aria-hidden="true" />
-            Acceso restringido a personal autorizado.
+
+          <div className="relative hidden flex-col gap-3.5 xl:flex">
+            <div className="flex items-stretch gap-[26px]">
+              <div>
+                <p className="font-display text-2xl font-extrabold leading-none tabular-nums">2.418</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.1em] text-white/50">Referencias</p>
+              </div>
+              <span className="w-px bg-white/10" aria-hidden="true" />
+              <div>
+                <p className="font-display text-2xl font-extrabold leading-none tabular-nums">90</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.1em] text-white/50">Días de traza</p>
+              </div>
+            </div>
+            <span className="flex items-center gap-2 text-[12.5px] text-white/55">
+              <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
+              Acceso restringido a personal autorizado
+            </span>
           </div>
         </section>
 
-        <section className="relative flex items-center justify-center bg-card px-4 pb-6 pt-16 text-card-foreground sm:p-10 xl:px-12">
-          <ThemeToggle className="absolute right-4 top-4 border border-border bg-background/85 shadow-sm sm:right-8 sm:top-8" />
-          <Card className="w-full max-w-lg border-0 bg-transparent shadow-none sm:border sm:border-border/80 sm:bg-background/70 sm:shadow-xl sm:dark:border-white/10 sm:dark:bg-white/[0.035]">
-            <CardHeader className="px-1 sm:px-6">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
-                Acceso
-              </p>
-              <h2 className="font-display text-2xl font-bold uppercase sm:text-3xl">
-                Inventario Nómada
-              </h2>
-              <p className="text-sm leading-relaxed text-foreground/75">
-                Ingresa con tu correo para consultar y actualizar existencias.
-              </p>
-            </CardHeader>
-            <CardContent className="px-1 sm:px-6">
+        <section className="relative flex items-center justify-center bg-background px-4 pb-8 pt-16 sm:p-10 xl:px-16">
+          <ThemeToggle className="absolute right-4 top-4 sm:right-8 sm:top-8" />
+          <div className="w-full max-w-[360px]">
+            <h2 className="font-display text-[22px] font-extrabold uppercase tracking-[0.02em] sm:text-[26px]">
+              Iniciar sesión
+            </h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground sm:text-[13.5px]">
+              Ingresa con tu correo corporativo para consultar y actualizar existencias.
+            </p>
+            <div className="mt-6">
               {configured ? (
                 <LoginForm passwordUpdated={passwordUpdated} />
               ) : (
@@ -69,8 +99,8 @@ export default async function LoginPage({
                   </Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </section>
       </div>
     </main>

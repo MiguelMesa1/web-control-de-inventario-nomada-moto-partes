@@ -14,6 +14,7 @@ import {
   Minus,
   PackageCheck,
   Plus,
+  Printer,
   Search,
   ShoppingCart,
   Trash2,
@@ -81,6 +82,7 @@ import { buildReorderAlertRows } from "@/lib/inventory/reorder";
 import { normalizeInventoryText } from "@/lib/inventory/priority-lines";
 import {
   buildActiveOrderBySku,
+  excludeActiveOrderRows,
   type ActiveOrderSummary,
 } from "@/lib/orders/active-orders";
 import { purchaseCartStorageKey } from "@/lib/orders/cart-storage";
@@ -117,6 +119,13 @@ type CartItem = {
 type PurchasePriority = "critical" | "high" | "medium";
 type PriorityFilter = "all" | PurchasePriority;
 type OrderFilter = "all" | PurchaseOrderStatus;
+
+const orderStatusLabels: Record<PurchaseOrderStatus, string> = {
+  draft: "Borrador",
+  ordered: "En curso",
+  received: "Recibido",
+  cancelled: "Cancelado",
+};
 
 function mergePurchaseOrders(
   current: PurchaseOrder[],
@@ -173,14 +182,11 @@ function priorityBadge(priority: PurchasePriority) {
   const Icon = priorityCopy[priority].icon;
   return (
     <Badge
-      variant={
-        priority === "critical"
-          ? "destructive"
-          : priority === "high"
-            ? "default"
-            : "outline"
-      }
-      className="gap-1.5"
+      variant={priority === "critical" ? "destructive" : "outline"}
+      className={cn(
+        "gap-1.5",
+        priority === "high" && "border-warning/45 bg-warning/10 text-warning",
+      )}
     >
       <Icon className="size-3" aria-hidden="true" />
       {priorityCopy[priority].label}
@@ -189,21 +195,15 @@ function priorityBadge(priority: PurchasePriority) {
 }
 
 function orderStatus(status: PurchaseOrderStatus) {
-  const labels: Record<PurchaseOrderStatus, string> = {
-    draft: "Borrador",
-    ordered: "Pedido en curso",
-    received: "Recibido",
-    cancelled: "Cancelado",
-  };
-  const variant =
-    status === "cancelled"
-      ? "destructive"
-      : status === "received"
-        ? "secondary"
-        : status === "draft"
-          ? "outline"
-          : "default";
-  return <Badge variant={variant}>{labels[status]}</Badge>;
+  if (status === "cancelled") return <Badge variant="destructive">{orderStatusLabels[status]}</Badge>;
+  if (status === "received") return <Badge variant="secondary">{orderStatusLabels[status]}</Badge>;
+  if (status === "ordered")
+    return (
+      <Badge variant="outline" className="border-warning/45 bg-warning/10 text-warning">
+        {orderStatusLabels[status]}
+      </Badge>
+    );
+  return <Badge variant="outline">{orderStatusLabels[status]}</Badge>;
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -877,7 +877,7 @@ function PurchaseCartPanel({
       id="purchase-cart"
       className="flex max-h-[calc(100dvh-7rem)] flex-col overflow-hidden"
     >
-      <CardHeader className="racing-stripe shrink-0 border-b border-secondary bg-secondary text-secondary-foreground">
+      <CardHeader className="shrink-0 border-b bg-muted/15">
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="font-display text-xl uppercase">
@@ -887,7 +887,7 @@ function PurchaseCartPanel({
               Revisa proveedores y cantidades antes de guardar.
             </CardDescription>
           </div>
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground text-background">
             <ShoppingCart aria-hidden="true" />
           </span>
         </div>
@@ -936,7 +936,7 @@ function OrderProgress({ status }: { status: PurchaseOrderStatus }) {
   ];
 
   return (
-    <ol className="grid grid-cols-3 gap-2" aria-label="Progreso del pedido">
+    <ol className="flex items-start" aria-label="Progreso del pedido">
       {steps.map((step, index) => {
         const Icon = step.icon;
         const isCurrent = index === statusIndex;
@@ -945,24 +945,50 @@ function OrderProgress({ status }: { status: PurchaseOrderStatus }) {
           <li
             key={step.label}
             className={cn(
-              "rounded-xl border p-2.5 text-center transition-colors",
-              (isCurrent || isComplete) && "border-primary/45 bg-primary/10",
-              status === "received" && index === 2 &&
-                "border-chart-2/45 bg-chart-2/10",
+              "flex items-center",
+              index < steps.length - 1 && "flex-1",
             )}
-            aria-current={isCurrent ? "step" : undefined}
           >
-            <Icon
-              className={cn(
-                "mx-auto size-4 text-muted-foreground",
-                (isCurrent || isComplete) && "text-foreground",
-              )}
-              aria-hidden="true"
-            />
-            <p className="mt-1.5 text-xs font-semibold">{step.label}</p>
-            <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-              {isCurrent ? "Estado actual" : isComplete ? "Completado" : "Pendiente"}
-            </p>
+            <div className="flex flex-col items-center gap-1.5">
+              <span
+                className={cn(
+                  "grid size-[18px] shrink-0 place-items-center rounded-full border-2",
+                  isComplete && "border-foreground bg-foreground",
+                  isCurrent && "border-foreground bg-primary",
+                  !isComplete && !isCurrent && "border-muted-foreground/30 bg-background",
+                )}
+                aria-current={isCurrent ? "step" : undefined}
+              >
+                {isComplete ? (
+                  <Check className="size-2.5 text-primary" strokeWidth={3} aria-hidden="true" />
+                ) : (
+                  <Icon
+                    className={cn(
+                      "size-2.5",
+                      isCurrent ? "text-foreground" : "text-transparent",
+                    )}
+                    aria-hidden="true"
+                  />
+                )}
+              </span>
+              <span
+                className={cn(
+                  "whitespace-nowrap text-[11px] font-semibold",
+                  !isComplete && !isCurrent && "text-muted-foreground",
+                )}
+              >
+                {step.label}
+              </span>
+            </div>
+            {index < steps.length - 1 && (
+              <span
+                className={cn(
+                  "mx-2 h-0.5 flex-1 rounded-full",
+                  index < statusIndex ? "bg-foreground" : "bg-border",
+                )}
+                aria-hidden="true"
+              />
+            )}
           </li>
         );
       })}
@@ -970,7 +996,7 @@ function OrderProgress({ status }: { status: PurchaseOrderStatus }) {
   );
 }
 
-function PurchaseOrderCard({
+export function PurchaseOrderCard({
   order,
   canEdit,
   downloading,
@@ -1116,7 +1142,123 @@ function PurchaseOrderCard({
   );
 }
 
-export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
+function PurchaseOrderDetail({
+  order,
+  canEdit,
+  downloading,
+  updating,
+  onDownload,
+  onUpdateStatus,
+  onRequestReceived,
+}: {
+  order: PurchaseOrder;
+  canEdit: boolean;
+  downloading: boolean;
+  updating: boolean;
+  onDownload: (order: PurchaseOrder) => void;
+  onUpdateStatus: (order: PurchaseOrder, status: PurchaseOrderStatus) => void;
+  onRequestReceived: (order: PurchaseOrder) => void;
+}) {
+  const units = order.items.reduce((total, item) => total + item.quantity, 0);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-display text-[22px] font-extrabold uppercase leading-none">
+              {order.orderNumber}
+            </h3>
+            {orderStatus(order.status)}
+          </div>
+          <p className="mt-2 text-[13px] text-muted-foreground">
+            {order.supplierName} · creado {orderDate.format(new Date(order.createdAt))} por {order.createdByName}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button variant="outline" onClick={() => onDownload(order)} disabled={downloading}>
+            {downloading ? (
+              <LoaderCircle className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <Printer data-icon="inline-start" />
+            )}
+            Imprimir
+          </Button>
+          {canEdit && order.status === "ordered" && (
+            <Button variant="secondary" onClick={() => onRequestReceived(order)} disabled={updating}>
+              <PackageCheck data-icon="inline-start" />
+              Registrar recepción
+            </Button>
+          )}
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
+        <OrderProgress status={order.status} />
+
+        <div className="overflow-hidden rounded-[14px] border">
+          <div className="grid h-10 grid-cols-[minmax(0,1fr)_84px_110px] items-center gap-4 bg-table-header px-4 text-[10.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+            <span>Producto</span>
+            <span className="text-right">Pedido</span>
+            <span className="text-right">Disp. al crear</span>
+          </div>
+          <div className="divide-y divide-row-separator">
+            {order.items.map((item) => (
+              <div
+                key={item.id}
+                className="grid min-h-12 grid-cols-[minmax(0,1fr)_84px_110px] items-center gap-4 px-4"
+              >
+                <div className="min-w-0 py-2">
+                  <p className="truncate text-[13.5px] font-semibold">{item.productName}</p>
+                  <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{item.sku}</p>
+                </div>
+                <p className="text-right text-[15px] font-bold tabular-nums">{number.format(item.quantity)}</p>
+                <p className="text-right text-[13px] text-muted-foreground tabular-nums">{number.format(item.availableAtCreation)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {order.notes && (
+          <p className="rounded-[10px] border bg-table-header px-4 py-3 text-[13px] text-muted-foreground">
+            {order.notes}
+          </p>
+        )}
+      </div>
+
+      <footer className="flex flex-col gap-3 border-t bg-table-header px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[13px] text-muted-foreground">
+          <strong className="text-foreground">{order.items.length}</strong> ítems ·{" "}
+          <strong className="text-foreground">{number.format(units)}</strong> unidades
+        </p>
+        {canEdit && (order.status === "draft" || order.status === "ordered") && (
+          <div className="flex flex-wrap gap-2">
+            {order.status === "draft" && (
+              <Button onClick={() => onUpdateStatus(order, "ordered")} disabled={updating}>
+                <Truck data-icon="inline-start" />
+                Marcar como solicitado
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => onUpdateStatus(order, "cancelled")} disabled={updating}>
+              <X data-icon="inline-start" />
+              Cancelar pedido
+            </Button>
+          </div>
+        )}
+      </footer>
+    </div>
+  );
+}
+
+export function OrdersWorkspace({
+  data,
+  initialOrderQuery = "",
+  initialSelectedOrderId,
+}: {
+  data: OrdersPageData;
+  initialOrderQuery?: string;
+  initialSelectedOrderId?: string | null;
+}) {
   const router = useRouter();
   const profile = useProfile();
   const {
@@ -1128,11 +1270,16 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
     reorderWatchlist,
   } = data;
   const canEdit = profile.role === "admin" || profile.role === "uploader";
-  const [tab, setTab] = useState("prepare");
+  const [tab, setTab] = useState(initialOrderQuery ? "history" : "prepare");
   const [query, setQuery] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
+  const [orderQuery, setOrderQuery] = useState(initialOrderQuery);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
+    initialSelectedOrderId ?? initialPurchaseOrders[0]?.id ?? null,
+  );
+  const [mobileOrderOpen, setMobileOrderOpen] = useState(false);
   const [olderPurchaseOrders, setOlderPurchaseOrders] = useState<
     PurchaseOrder[]
   >([]);
@@ -1211,23 +1358,27 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
     () => new Set(activeOrderBySku.keys()),
     [activeOrderBySku],
   );
+  const productsToOrder = useMemo(
+    () => excludeActiveOrderRows(attentionRows, openOrderSkus),
+    [attentionRows, openOrderSkus],
+  );
   const cartSkus = useMemo(() => new Set(cart.map((item) => item.sku)), [cart]);
   const suppliers = useMemo(
     () =>
       [
         ...new Set(
-          rows.flatMap((row) =>
+          productsToOrder.flatMap((row) =>
             [row.primarySupplier, row.secondarySupplier].filter(
               (value): value is string => Boolean(value),
             ),
           ),
         ),
       ].sort((a, b) => a.localeCompare(b, "es")),
-    [rows],
+    [productsToOrder],
   );
   const filteredSuggestions = useMemo(() => {
     const normalized = normalizeInventoryText(deferredQuery);
-    return attentionRows.filter((row) => {
+    return productsToOrder.filter((row) => {
       const matchesQuery =
         !normalized ||
         normalizeInventoryText(row.sku).includes(normalized) ||
@@ -1241,7 +1392,7 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
         getPurchasePriority(row) === priorityFilter;
       return matchesQuery && matchesSupplier && matchesPriority;
     });
-  }, [attentionRows, deferredQuery, priorityFilter, supplierFilter]);
+  }, [deferredQuery, priorityFilter, productsToOrder, supplierFilter]);
   const manualOptions = useMemo(() => {
     const normalized = normalizeInventoryText(deferredManualQuery);
     return rows
@@ -1271,24 +1422,24 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
   );
   const totalSuggestedUnits = useMemo(
     () =>
-      attentionRows.reduce(
+      productsToOrder.reduce(
         (total, row) => total + Math.max(1, Math.ceil(row.suggestedQuantity)),
         0,
       ),
-    [attentionRows],
+    [productsToOrder],
   );
   const priorityCounts = useMemo(
     () =>
-      attentionRows.reduce<Record<PurchasePriority, number>>(
+      productsToOrder.reduce<Record<PurchasePriority, number>>(
         (counts, row) => {
           counts[getPurchasePriority(row)] += 1;
           return counts;
         },
         { critical: 0, high: 0, medium: 0 },
       ),
-    [attentionRows],
+    [productsToOrder],
   );
-  const inProgressCount = useMemo(
+  const inProgressProductCount = useMemo(
     () =>
       [...activeOrderBySku.values()].filter(
         (order) => order.status === "ordered",
@@ -1313,12 +1464,27 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
     0,
   );
   const filteredOrders = useMemo(
-    () =>
-      orderFilter === "all"
-        ? purchaseOrders
-        : purchaseOrders.filter((order) => order.status === orderFilter),
-    [orderFilter, purchaseOrders],
+    () => {
+      const normalizedQuery = normalizeInventoryText(orderQuery);
+      return purchaseOrders.filter((order) => {
+        const matchesStatus =
+          orderFilter === "all" || order.status === orderFilter;
+        const matchesQuery =
+          !normalizedQuery ||
+          normalizeInventoryText(
+            `${order.orderNumber} ${order.supplierName} ${order.items
+              .map((item) => `${item.sku} ${item.productName}`)
+              .join(" ")}`,
+          ).includes(normalizedQuery);
+        return matchesStatus && matchesQuery;
+      });
+    },
+    [orderFilter, orderQuery, purchaseOrders],
   );
+  const selectedOrder =
+    filteredOrders.find((order) => order.id === selectedOrderId) ??
+    filteredOrders[0] ??
+    null;
   const hasActiveFilters =
     query.trim().length > 0 ||
     supplierFilter !== "all" ||
@@ -1690,17 +1856,15 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
   return (
     <div>
       <PageHeader
-        eyebrow="Gestión de compras"
         title="Pedidos"
-        description="Decide qué reponer, prepara cada compra por proveedor y acompaña el pedido hasta recibirlo."
-        icon={ClipboardList}
-        action={
+        subtitle={`${productsToOrder.length} por pedir · ${totalOrderCount} pedidos guardados`}
+        actions={
           canEdit ? (
             <Button variant="outline" onClick={() => setManualOpen(true)}>
               <Plus data-icon="inline-start" aria-hidden="true" />
               Agregar otro producto
             </Button>
-          ) : null
+          ) : undefined
         }
       />
 
@@ -1727,13 +1891,16 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
               aria-label="Resumen de preparación"
             >
               <Badge variant="outline">
-                {attentionRows.length} por reponer
+                {productsToOrder.length} por pedir
               </Badge>
               <Badge variant="outline">
                 {number.format(totalSuggestedUnits)} unidades sugeridas
               </Badge>
               <Badge variant="outline">
-                {inProgressCount} {inProgressCount === 1 ? "pedido en curso" : "pedidos en curso"}
+                {inProgressProductCount}{" "}
+                {inProgressProductCount === 1
+                  ? "producto en curso"
+                  : "productos en curso"}
               </Badge>
             </div>
           ) : null}
@@ -1776,7 +1943,7 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
                   <PriorityFilterBar
                     value={priorityFilter}
                     counts={priorityCounts}
-                    total={attentionRows.length}
+                    total={productsToOrder.length}
                     onChange={setPriorityFilter}
                   />
                 </div>
@@ -1872,128 +2039,141 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
         </TabsContent>
 
         <TabsContent value="history" className="mt-0">
-          <Card id="purchase-order-tracking" className="scroll-mt-24">
-            <CardHeader className="gap-4 border-b bg-muted/10">
-              <div>
-                <CardTitle className="font-display text-2xl uppercase">
-                  Seguimiento de pedidos
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Consulta qué está en borrador, qué ya se solicitó y qué fue
-                  recibido. Los pedidos anteriores se cargan por bloques para
-                  mantener la vista rápida.
-                </CardDescription>
+          <section id="purchase-order-tracking" className="scroll-mt-24 overflow-hidden rounded-[14px] border bg-card">
+            <header className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative w-full lg:max-w-[352px]">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  value={orderQuery}
+                  onChange={(event) => setOrderQuery(event.target.value)}
+                  placeholder="Buscar pedido o proveedor…"
+                  className="h-[34px] pl-10"
+                  aria-label="Buscar pedidos"
+                />
               </div>
               <ToggleGroup
                 type="single"
                 variant="outline"
                 value={orderFilter}
-                onValueChange={(value) =>
-                  setOrderFilter((value || "all") as OrderFilter)
-                }
+                onValueChange={(value) => setOrderFilter((value || "all") as OrderFilter)}
                 className="flex-wrap justify-start"
                 aria-label="Filtrar pedidos por estado"
               >
                 {[
-                  [
-                    "all",
-                    "Todos",
-                    totalOrderCount,
-                  ],
-                  ["draft", "Borradores", orderCounts.draft],
+                  ["all", "Todos", totalOrderCount],
+                  ["draft", "Borrador", orderCounts.draft],
                   ["ordered", "En curso", orderCounts.ordered],
                   ["received", "Recibidos", orderCounts.received],
                   ["cancelled", "Cancelados", orderCounts.cancelled],
                 ].map(([value, label, count]) => (
-                  <ToggleGroupItem
-                    key={String(value)}
-                    value={String(value)}
-                    className="min-h-11 rounded-xl px-3"
-                  >
-                    {String(label)}
-                    <Badge variant="secondary">{Number(count)}</Badge>
+                  <ToggleGroupItem key={String(value)} value={String(value)} className="h-[34px] min-h-0 rounded-[8px] px-2.5 text-xs">
+                    {String(label)} <span className="tabular-nums opacity-65">{Number(count)}</span>
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
-              <p className="text-xs text-muted-foreground">
-                Mostrando {purchaseOrders.length} de {totalOrderCount} pedidos.
-              </p>
-            </CardHeader>
-            <CardContent className="p-3 sm:p-4">
-              {filteredOrders.length > 0 ? (
-                <div className="flex flex-col gap-3">
-                  {filteredOrders.map((order) => (
-                    <PurchaseOrderCard
-                      key={order.id}
-                      order={order}
+            </header>
+
+            {filteredOrders.length > 0 ? (
+              <div className="grid min-h-[520px] lg:grid-cols-[352px_minmax(0,1fr)]">
+                <div className="border-r">
+                  <div className="divide-y divide-row-separator">
+                    {filteredOrders.map((order) => {
+                      const units = order.items.reduce((total, item) => total + item.quantity, 0);
+                      const progress = order.status === "received" ? 100 : order.status === "ordered" ? 62 : order.status === "draft" ? 18 : 0;
+                      const active = selectedOrder?.id === order.id;
+                      return (
+                        <button
+                          key={order.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedOrderId(order.id);
+                            if (window.matchMedia("(max-width: 1023px)").matches) {
+                              setMobileOrderOpen(true);
+                            }
+                          }}
+                          className={cn(
+                            "relative flex min-h-[86px] w-full flex-col justify-center px-4 py-3 text-left transition-colors hover:bg-muted/40",
+                            active && "bg-primary/[0.09]",
+                            order.status === "received" && "opacity-75",
+                          )}
+                        >
+                          {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-primary" />}
+                          <span className="flex items-center justify-between gap-3">
+                            <span className="font-mono text-[12.5px] font-bold">{order.orderNumber}</span>
+                            <span className={cn(
+                              "text-[11px] font-bold uppercase",
+                              order.status === "ordered" && "text-warning",
+                              order.status === "received" && "text-success",
+                              order.status === "cancelled" && "text-destructive",
+                              order.status === "draft" && "text-muted-foreground",
+                            )}>{orderStatusLabels[order.status]}</span>
+                          </span>
+                          <span className="mt-1 truncate text-[12.5px] text-foreground-secondary">{order.supplierName}</span>
+                          <span className="mt-2 flex items-center gap-2">
+                            <span className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                              <span className="block h-full rounded-full bg-foreground" style={{ width: `${progress}%` }} />
+                            </span>
+                            <span className="text-[10.5px] tabular-nums text-muted-foreground">{number.format(units)} uds.</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {purchaseOrdersPage.hasMore && (
+                    <div className="border-t p-3">
+                      <Button variant="outline" size="sm" className="w-full" onClick={loadOlderOrders} disabled={loadingOlderOrders}>
+                        {loadingOlderOrders ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <ChevronDown data-icon="inline-start" />}
+                        {loadingOlderOrders ? "Cargando…" : "Cargar anteriores"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="hidden min-h-0 lg:flex">
+                  {selectedOrder && (
+                    <PurchaseOrderDetail
+                      order={selectedOrder}
                       canEdit={canEdit}
-                      downloading={downloadingOrderId === order.id}
-                      updating={updatingOrderId === order.id}
+                      downloading={downloadingOrderId === selectedOrder.id}
+                      updating={updatingOrderId === selectedOrder.id}
                       onDownload={downloadSavedOrder}
                       onUpdateStatus={updateOrderStatus}
                       onRequestReceived={setOrderToReceive}
                     />
-                  ))}
+                  )}
                 </div>
-              ) : (
-                <div className="grid min-h-64 place-items-center p-6 text-center">
-                  <div>
-                    <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground">
-                      <ClipboardList aria-hidden="true" />
-                    </span>
-                    <p className="mt-4 font-semibold">
-                      {purchaseOrders.length
-                        ? "No hay pedidos con este estado"
-                        : "Aún no hay pedidos guardados"}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {purchaseOrders.length
-                        ? purchaseOrdersPage.hasMore
-                          ? "Puede haber resultados en pedidos anteriores. Cárgalos para continuar."
-                          : "Elige otro estado para continuar."
-                        : "Prepara una compra y guarda el primer borrador por proveedor."}
-                    </p>
-                    {!purchaseOrders.length ? (
-                      <Button className="mt-5" onClick={() => setTab("prepare")}>
-                        <ShoppingCart
-                          data-icon="inline-start"
-                          aria-hidden="true"
-                        />
-                        Preparar compra
-                      </Button>
-                    ) : null}
-                  </div>
+              </div>
+            ) : (
+              <div className="grid min-h-64 place-items-center p-6 text-center">
+                <div>
+                  <span className="mx-auto grid size-11 place-items-center rounded-[14px] bg-muted text-muted-foreground"><ClipboardList aria-hidden="true" /></span>
+                  <p className="mt-4 text-[15px] font-bold">{purchaseOrders.length ? "No hay pedidos para este filtro" : "Aún no hay pedidos guardados"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{purchaseOrders.length ? "Prueba otro estado o limpia la búsqueda." : "Prepara una compra y guarda el primer borrador por proveedor."}</p>
+                  {!purchaseOrders.length && <Button className="mt-5" onClick={() => setTab("prepare")}><ShoppingCart data-icon="inline-start" />Preparar compra</Button>}
                 </div>
+              </div>
+            )}
+          </section>
+
+          <Sheet open={mobileOrderOpen} onOpenChange={setMobileOrderOpen}>
+            <SheetContent side="right" className="flex flex-col gap-0 p-0 lg:hidden">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Detalle del pedido</SheetTitle>
+                <SheetDescription>Productos y estado del pedido seleccionado.</SheetDescription>
+              </SheetHeader>
+              {selectedOrder && (
+                <PurchaseOrderDetail
+                  order={selectedOrder}
+                  canEdit={canEdit}
+                  downloading={downloadingOrderId === selectedOrder.id}
+                  updating={updatingOrderId === selectedOrder.id}
+                  onDownload={downloadSavedOrder}
+                  onUpdateStatus={updateOrderStatus}
+                  onRequestReceived={setOrderToReceive}
+                />
               )}
-              {purchaseOrdersPage.hasMore ? (
-                <div className="mt-4 flex justify-center border-t pt-4">
-                  <Button
-                    variant="outline"
-                    className="min-h-11"
-                    onClick={loadOlderOrders}
-                    disabled={loadingOlderOrders}
-                  >
-                    {loadingOlderOrders ? (
-                      <LoaderCircle
-                        className="animate-spin"
-                        data-icon="inline-start"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <ChevronDown data-icon="inline-start" aria-hidden="true" />
-                    )}
-                    {loadingOlderOrders
-                      ? "Cargando pedidos…"
-                      : "Cargar pedidos anteriores"}
-                  </Button>
-                </div>
-              ) : purchaseOrders.length > 0 ? (
-                <p className="mt-4 border-t pt-4 text-center text-xs text-muted-foreground">
-                  Llegaste al final del historial disponible.
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
+            </SheetContent>
+          </Sheet>
         </TabsContent>
       </Tabs>
 
@@ -2004,7 +2184,7 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
           onClick={() => setCartOpen(true)}
         >
           <span className="flex items-center gap-3 text-left">
-            <span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <span className="grid size-10 place-items-center rounded-xl bg-foreground text-background">
               <ShoppingCart aria-hidden="true" />
             </span>
             <span>
@@ -2024,7 +2204,7 @@ export function OrdersWorkspace({ data }: { data: OrdersPageData }) {
           side="right"
           className="flex w-full flex-col gap-0 p-0 sm:max-w-lg min-[1440px]:hidden"
         >
-          <SheetHeader className="racing-stripe shrink-0 border-b border-secondary bg-secondary p-5 pr-16 text-left text-secondary-foreground sm:p-6 sm:pr-16">
+          <SheetHeader className="shrink-0 border-b bg-muted/15 p-5 pr-16 text-left sm:p-6 sm:pr-16">
             <SheetTitle className="font-display text-xl uppercase text-secondary-foreground">
               Pedido en preparación
             </SheetTitle>
