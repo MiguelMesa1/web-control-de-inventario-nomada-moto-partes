@@ -79,6 +79,10 @@ Abre [http://localhost:3000](http://localhost:3000) en el navegador.
 
 No subas `.env.local`, `.insforge/`, dependencias, compilados ni reportes de pruebas. El archivo `.gitignore` del proyecto ya los excluye. Usa `.env.example` únicamente como plantilla y nunca pongas claves reales allí.
 
+Las credenciales de InsForge se usan exclusivamente en el servidor. Configura `INSFORGE_URL`, `INSFORGE_ANON_KEY` e `INSFORGE_API_KEY` con esos mismos nombres en Vercel; no uses variantes `NEXT_PUBLIC_`. El módulo de configuración está protegido con `server-only` para impedir su importación desde componentes del navegador.
+
+Mantén deshabilitado el autorregistro también en InsForge (`auth.disable_signup = true`), no solo en la interfaz. La creación de cuentas se realiza mediante el administrador autorizado.
+
 ## Estructura principal
 
 ```text
