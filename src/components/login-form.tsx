@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Info, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
 import { useActionState, useState } from "react";
 import {
   signInAction,
@@ -22,7 +22,7 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4 sm:gap-5">
+    <form action={formAction} className="flex flex-col gap-4">
       {state.error && (
         <Alert variant="destructive" role="alert">
           <LockKeyhole aria-hidden="true" />
@@ -40,8 +40,10 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
         </Alert>
       )}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="email">Correo electrónico</Label>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="email" className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+          Correo electrónico
+        </Label>
         <div className="relative">
           <Mail
             aria-hidden="true"
@@ -55,14 +57,21 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
             placeholder="tu@nomadamotopartes.co"
-            className="h-12 pl-10"
+            className="h-[46px] pl-10 focus-visible:border-foreground focus-visible:ring-primary/35 lg:h-[46px]"
             required
           />
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="password">Contraseña</Label>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <Label htmlFor="password" className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+            Contraseña
+          </Label>
+          <a href="#login-help" className="text-[11.5px] font-medium text-warning underline underline-offset-2">
+            ¿Olvidaste?
+          </a>
+        </div>
         <div className="relative">
           <LockKeyhole
             aria-hidden="true"
@@ -73,7 +82,7 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
             name="password"
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
-            className="h-12 px-10"
+            className="h-[46px] px-10 focus-visible:border-foreground focus-visible:ring-primary/35 lg:h-[46px]"
             required
           />
           <Button
@@ -91,15 +100,17 @@ export function LoginForm({ passwordUpdated = false }: { passwordUpdated?: boole
 
       <Button
         type="submit"
-        size="lg"
         disabled={pending}
-        className="h-12 shadow-[0_5px_16px_rgba(240,227,0,0.2)] transition-[background-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:bg-primary/90 hover:shadow-[0_8px_22px_rgba(240,227,0,0.3)] active:translate-y-0 disabled:shadow-none"
+        className="h-12 sm:h-[46px] lg:h-[46px]"
       >
         {pending && <LoaderCircle data-icon="inline-start" className="animate-spin" />}
-        {pending ? "Iniciando sesión…" : "Iniciar sesión"}
+        {pending ? "Iniciando sesión…" : "Entrar"}
       </Button>
-      <p className="text-center text-xs leading-relaxed text-foreground/70">
-        El acceso es privado. Si necesitas una cuenta, habla con un administrador.
+
+      <p id="login-help" className="flex items-start gap-2 border-t pt-4 text-xs leading-relaxed text-muted-foreground">
+        <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        El acceso es privado. Si necesitas una cuenta o olvidaste tu contraseña,
+        habla con un administrador.
       </p>
     </form>
   );

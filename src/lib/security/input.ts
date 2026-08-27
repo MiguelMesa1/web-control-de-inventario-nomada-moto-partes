@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readBoundedBody, RequestBodyTooLargeError } from "./request";
 
 type TextOptions = {
   allowEmpty?: boolean;
@@ -21,17 +22,17 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 
 export async function readJsonObject(request: Request) {
   try {
-    const value: unknown = await request.json();
+    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readBoundedBody(request)));
     if (!isPlainObject(value)) {
       throw new Error("not-an-object");
     }
     return { data: value, error: null };
-  } catch {
+  } catch (error) {
     return {
       data: null,
       error: NextResponse.json(
-        { message: "El cuerpo JSON no es válido." },
-        { status: 400 },
+        { message: error instanceof RequestBodyTooLargeError ? "La solicitud supera el tamaño permitido." : "El cuerpo JSON no es válido." },
+        { status: error instanceof RequestBodyTooLargeError ? 413 : 400 },
       ),
     };
   }

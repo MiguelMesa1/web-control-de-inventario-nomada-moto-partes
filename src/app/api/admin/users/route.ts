@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isInsForgeConfigured } from "@/lib/insforge/config";
+import { getInsForgeConnectionSettings, isInsForgeConfigured } from "@/lib/insforge/config";
 import {
   createInsForgeAdminClient,
   createInsForgeServerClient,
@@ -9,6 +9,7 @@ import type { UserProfile, UserRole } from "@/types/inventory";
 import { requireJsonRequest } from "@/lib/security/request";
 import {
   readJsonObject,
+  isPlainObject,
   sanitizeEmail,
   sanitizeText,
   sanitizeUuid,
@@ -20,6 +21,32 @@ import {
 import { recordAuditEvent } from "@/lib/security/audit";
 
 const validRoles: UserRole[] = ["admin", "reader", "uploader", "blocked"];
+
+async function findCreatedAuthUserId(email: string) {
+  const { baseUrl } = getInsForgeConnectionSettings();
+  if (!baseUrl) return null;
+  // Some backend versions intentionally omit user/tokens on admin signup.
+  // Resolve only the exact email through the documented, server-only admin API.
+  const url = new URL("/api/auth/users", baseUrl);
+  url.searchParams.set("search", email);
+  url.searchParams.set("limit", "10");
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${process.env.INSFORGE_API_KEY}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    const payload: unknown = await response.json();
+    if (!isPlainObject(payload) || !Array.isArray(payload.data)) return null;
+    const user = payload.data.find((candidate: unknown) =>
+      isPlainObject(candidate) && sanitizeEmail(candidate.email) === email,
+    );
+    return isPlainObject(user) ? sanitizeUuid(user.id) : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function PATCH(request: Request) {
   const requestError = requireJsonRequest(request);
@@ -95,8 +122,8 @@ export async function POST(request: Request) {
     name: displayName,
     autoConfirm: true,
   });
-  const authUser = authData?.user;
-  if (authError || !authUser) {
+  const authUserId = authError ? null : sanitizeUuid(authData?.user?.id) ?? await findCreatedAuthUserId(email);
+  if (authError || !authUserId) {
     return NextResponse.json(
       { message: "No pudimos crear la cuenta. Revisa el correo e intenta nuevamente." },
       { status: 400 },
@@ -107,7 +134,7 @@ export async function POST(request: Request) {
     .from("profiles")
     .insert([
       {
-        id: authUser.id,
+        id: authUserId,
         email,
         display_name: displayName,
         role,
@@ -122,7 +149,7 @@ export async function POST(request: Request) {
     actorId: actor.id,
     action: "profile.created",
     entityType: "profile",
-    entityId: authUser.id,
+    entityId: authUserId,
     details: { role, email },
   });
   const row = data as {

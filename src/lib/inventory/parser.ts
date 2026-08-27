@@ -43,12 +43,9 @@ const normalizeHeader = (value: string) =>
     .trim();
 
 function findValue(row: RawRow, aliases: readonly string[]) {
-  const normalized = new Map(
-    Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]),
-  );
   for (const alias of aliases) {
-    if (!normalized.has(alias)) continue;
-    const value = normalized.get(alias);
+    if (!Object.hasOwn(row, alias)) continue;
+    const value = row[alias];
     if (value === undefined || value === null || String(value).trim() === "") {
       continue;
     }
@@ -100,6 +97,12 @@ export function normalizeInventoryRows(
   if (!rows.length) {
     throw new Error("El archivo está vacío. Revisa la exportación e intenta de nuevo.");
   }
+
+  if (rows.length > 100_000) throw new Error("La carga supera 100.000 filas.");
+  // Normalize headers once per row, not once for every field lookup.
+  rows = rows.map((row) => Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]),
+  ));
 
   const effiConsolidated = isEffiConsolidatedExport(rows);
   const principalWarehouseStock = hasPrincipalWarehouseStock(rows);
@@ -220,10 +223,16 @@ export async function parseInventoryFile(
   } else {
     const XLSX = await import("xlsx");
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
+    const workbook = XLSX.read(buffer, { type: "array", sheets: 0, sheetRows: 100_002 });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) throw new Error("El Excel no contiene hojas.");
-    rows = XLSX.utils.sheet_to_json<RawRow>(workbook.Sheets[sheetName], {
+    const sheet = workbook.Sheets[sheetName];
+    // SheetJS records the original range when sheetRows truncates a sheet.
+    // Never silently publish a partial inventory.
+    if (sheet["!fullref"] && sheet["!fullref"] !== sheet["!ref"]) {
+      throw new Error("La hoja supera el límite de lectura de 100.000 filas. Reduce el archivo antes de publicar.");
+    }
+    rows = XLSX.utils.sheet_to_json<RawRow>(sheet, {
       defval: "",
     });
   }

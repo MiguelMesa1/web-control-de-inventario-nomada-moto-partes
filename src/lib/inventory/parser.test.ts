@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { normalizeInventoryRows } from "@/lib/inventory/parser";
+import { serializeInventoryImport } from "@/lib/inventory/import-payload";
 
 describe("inventory file normalization", () => {
+  it("sends the source date once, without redundant per-row snapshot metadata", () => {
+    const items = normalizeInventoryRows([{ SKU: "A", Producto: "Producto", Línea: "Motor", Bodega: "Principal", Existencia: 1 }], "2026-08-01T05:00:00Z");
+    const body = JSON.parse(serializeInventoryImport("file.csv", "checksum", "2026-08-01T05:00:00Z", items));
+    expect(body.sourceExportedAt).toBe("2026-08-01T05:00:00Z");
+    expect(body.items[0]).not.toHaveProperty("sourceExportedAt");
+    expect(body.items[0].available).toBe(1);
+  });
+
+  it("rejects an oversized serialized import before sending any request", () => {
+    const item = normalizeInventoryRows([{ SKU: "A", Producto: "é".repeat(300), Línea: "Motor", Bodega: "Principal", Existencia: 1 }])[0];
+    expect(() => serializeInventoryImport("file.csv", "checksum", "2026-08-01T05:00:00Z", Array.from({ length: 7000 }, () => item))).toThrow("4,4 MB");
+  });
+  it("rejects oversized row sets before normalization", () => {
+    expect(() => normalizeInventoryRows(Array.from({ length: 100_001 }, () => ({})))).toThrow("100.000");
+  });
   it("maps common Effi aliases and calculates available", () => {
     const [row] = normalizeInventoryRows(
       [

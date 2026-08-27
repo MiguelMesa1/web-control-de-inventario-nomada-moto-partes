@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildActiveOrderBySku,
+  countExhaustedReordersWithoutActiveOrder,
   excludeActiveOrderRows,
 } from "@/lib/orders/active-orders";
 import type { PurchaseOrder } from "@/types/inventory";
@@ -70,5 +71,18 @@ describe("buildActiveOrderBySku", () => {
     expect(excludeActiveOrderRows(rows, ["SKU-EN-CURSO"])).toEqual([
       { sku: "SKU-PENDIENTE", quantity: 5 },
     ]);
+  });
+
+  it("cuenta agotados sin pedido únicamente desde la lista de recompra", () => {
+    const rows = [
+      { sku: "AGOTADO-PENDIENTE", status: "exhausted" },
+      { sku: "AGOTADO-PEDIDO", status: "exhausted" },
+      { sku: "BAJO", status: "low" },
+      { sku: "AUSENTE", status: "missing" },
+    ];
+
+    expect(
+      countExhaustedReordersWithoutActiveOrder(rows, ["AGOTADO-PEDIDO"]),
+    ).toBe(1);
   });
 });

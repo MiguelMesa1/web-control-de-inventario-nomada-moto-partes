@@ -50,6 +50,13 @@ const config: Config = {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
+        warning: "hsl(var(--warning))",
+        success: "hsl(var(--success))",
+        "foreground-secondary": "hsl(var(--foreground-secondary))",
+        "label-foreground": "hsl(var(--label-foreground))",
+        "row-alt": "hsl(var(--row-alt))",
+        "table-header": "hsl(var(--table-header))",
+        "row-separator": "hsl(var(--row-separator))",
         chart: {
           1: "hsl(var(--chart-1))",
           2: "hsl(var(--chart-2))",

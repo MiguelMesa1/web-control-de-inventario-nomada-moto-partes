@@ -2,7 +2,8 @@ import { demoInventoryData, demoPurchaseOrders } from "@/lib/demo-data";
 import { createAuthenticatedInsForgeServerClient } from "@/lib/insforge/authenticated-server";
 import { isInsForgeConfigured } from "@/lib/insforge/config";
 import { createInsForgeAdminClient } from "@/lib/insforge/server";
-import { loadAllPages } from "@/lib/inventory/pagination";
+import { loadAllPages, loadSnapshotPages } from "@/lib/inventory/pagination";
+import type { InventoryTrendPoint } from "@/lib/inventory/analytics";
 import type {
   ImportRun,
   DashboardPageData,
@@ -112,31 +113,12 @@ async function loadCurrent(insforge: InsForgeServerClient) {
   return rows.map(mapInventoryItem);
 }
 
-async function loadHistorySince(
-  insforge: InsForgeServerClient,
-  since: string,
-) {
-  const rows = await loadAllPages<DbHistoryPoint>((from, to) =>
-    insforge.database
-      .from("inventory_items")
-      .select(
-        "snapshot_id,sku,product_line,warehouse,available,recorded_at",
-      )
-      .gte("recorded_at", since)
-      .order("recorded_at")
-      .order("snapshot_id")
-      .order("sku")
-      .order("warehouse")
-      .range(from, to),
-  );
-  return rows.map(mapHistoryPoint);
-}
-
 async function loadHistorySnapshot(
   insforge: InsForgeServerClient,
   snapshotId: string,
+  itemCount: number,
 ) {
-  const rows = await loadAllPages<DbHistoryPoint>((from, to) =>
+  const rows = await loadSnapshotPages<DbHistoryPoint>((from, to) =>
     insforge.database
       .from("inventory_items")
       .select(
@@ -146,6 +128,7 @@ async function loadHistorySnapshot(
       .order("sku")
       .order("warehouse")
       .range(from, to),
+    itemCount,
   );
   return rows.map(mapHistoryPoint);
 }
@@ -160,6 +143,8 @@ async function loadSnapshots(
       "id,filename,checksum,source_exported_at,item_count,uploaded_by,created_at",
     )
     .order("source_exported_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(limit);
   if (result.error) throw new Error(result.error.message);
 
@@ -441,6 +426,59 @@ async function loadPurchaseOrders(
   };
 }
 
+async function loadPurchaseOrderById(
+  insforge: InsForgeServerClient,
+  orderId: string,
+): Promise<PurchaseOrder | null> {
+  const orderResult = await insforge.database
+    .from("purchase_orders")
+    .select(
+      "id,order_number,supplier_name,created_by,status,notes,created_at,updated_at",
+    )
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderResult.error) throw new Error(orderResult.error.message);
+  if (!orderResult.data) return null;
+
+  const itemsResult = await insforge.database
+    .from("purchase_order_items")
+    .select(
+      "id,order_id,sku,product_name,quantity,available_at_creation,minimum_stock,maximum_stock,created_at",
+    )
+    .eq("order_id", orderId)
+    .order("product_name")
+    .order("id");
+  if (itemsResult.error) throw new Error(itemsResult.error.message);
+
+  const order = orderResult.data as DbPurchaseOrder;
+  const creatorNames = await loadPurchaseOrderCreatorNames([
+    String(order.created_by),
+  ]);
+  return {
+    id: String(order.id),
+    orderNumber: String(order.order_number),
+    supplierName: String(order.supplier_name),
+    createdBy: String(order.created_by),
+    createdByName:
+      creatorNames.get(String(order.created_by)) ?? "Usuario del equipo",
+    status: order.status,
+    notes: order.notes ? String(order.notes) : undefined,
+    createdAt: String(order.created_at),
+    updatedAt: String(order.updated_at),
+    items: (itemsResult.data ?? []).map((item): PurchaseOrderItem => ({
+      id: String(item.id),
+      orderId: String(item.order_id),
+      sku: String(item.sku),
+      productName: String(item.product_name),
+      quantity: Number(item.quantity),
+      availableAtCreation: Number(item.available_at_creation),
+      minimumStock: Number(item.minimum_stock),
+      maximumStock: Number(item.maximum_stock),
+      createdAt: String(item.created_at),
+    })),
+  };
+}
+
 async function loadReorderLineSettings(
   insforge: InsForgeServerClient,
 ): Promise<ReorderLineSetting[]> {
@@ -485,7 +523,7 @@ export async function loadDashboardData(): Promise<DashboardPageData> {
     (snapshot) => snapshot.id !== currentSnapshotId,
   );
   const history = previousSnapshot
-    ? await loadHistorySnapshot(insforge, previousSnapshot.id)
+    ? await loadHistorySnapshot(insforge, previousSnapshot.id, previousSnapshot.itemCount)
     : [];
 
   return {
@@ -574,7 +612,9 @@ export async function loadReorderAlertData() {
   return { current, reorderWatchlist, activeOrderSkus };
 }
 
-export async function loadOrdersPageData(): Promise<OrdersPageData> {
+export async function loadOrdersPageData(
+  selectedOrderId?: string,
+): Promise<OrdersPageData> {
   if (!isInsForgeConfigured()) {
     return {
       current: demoInventoryData.current,
@@ -599,16 +639,28 @@ export async function loadOrdersPageData(): Promise<OrdersPageData> {
     reorderWatchlist,
     purchaseOrderResult,
     purchaseOrderCounts,
+    selectedOrder,
   ] = await Promise.all([
     loadCurrent(insforge),
     loadReorderWatchlist(insforge),
     loadPurchaseOrders(insforge, { includeAllActive: true }),
     loadPurchaseOrderStatusCounts(insforge),
+    selectedOrderId
+      ? loadPurchaseOrderById(insforge, selectedOrderId)
+      : Promise.resolve(null),
   ]);
+  const purchaseOrders = selectedOrder
+    ? [
+        selectedOrder,
+        ...purchaseOrderResult.orders.filter(
+          (order) => order.id !== selectedOrder.id,
+        ),
+      ]
+    : purchaseOrderResult.orders;
   return {
     current,
     reorderWatchlist,
-    purchaseOrders: purchaseOrderResult.orders,
+    purchaseOrders,
     purchaseOrdersPage: purchaseOrderResult.page,
     purchaseOrderCounts,
     isDemo: false,
@@ -629,25 +681,56 @@ export async function loadInventoryData(): Promise<InventoryData> {
 }
 
 export async function loadAnalyticsData(): Promise<
-  Pick<InventoryData, "current" | "history" | "isDemo">
+  Pick<InventoryData, "current" | "history" | "isDemo"> & { trend: InventoryTrendPoint[] }
 > {
   if (!isInsForgeConfigured()) {
     return {
       current: demoInventoryData.current,
       history: demoInventoryData.history,
+      trend: demoInventoryData.history,
       isDemo: true,
     };
   }
 
   const insforge = await createAuthenticatedInsForgeServerClient();
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-  const [current, history] = await Promise.all([
+  const [current, snapshots, trend] = await Promise.all([
     loadCurrent(insforge),
-    loadHistorySince(insforge, ninetyDaysAgo.toISOString()),
+    loadSnapshots(insforge, 3),
+    loadAnalyticsTrend(insforge),
   ]);
-  return { current, history, isDemo: false };
+  const previous = snapshots.find((snapshot) => snapshot.id !== current[0]?.snapshotId);
+  const history = previous ? await loadHistorySnapshot(insforge, previous.id, previous.itemCount) : [];
+  return { current, history, trend, isDemo: false };
+}
+
+async function loadAnalyticsTrend(insforge: InsForgeServerClient): Promise<InventoryTrendPoint[]> {
+  type Row = { snapshot_id: string; recorded_at: string; product_line: string; available: number | string };
+  const rows = await loadAllPages<Row>((from, to) => insforge.database
+    .rpc("inventory_analytics_trend", {})
+    .range(from, to));
+  return rows.map((point) => ({ snapshotId: point.snapshot_id, date: point.recorded_at,
+    productLine: point.product_line, available: Number(point.available) }));
+}
+
+export async function loadAnalyticsRange(fromDate: string, toDate: string) {
+  const insforge = await createAuthenticatedInsForgeServerClient();
+  const snapshotAt = async (date: string) => {
+    const result = await insforge.database.from("inventory_snapshots")
+      .select("id,item_count")
+      .lte("source_exported_at", `${date}T23:59:59.999-05:00`)
+      .order("source_exported_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1).maybeSingle();
+    if (result.error) throw new Error(result.error.message);
+    return result.data?.id ? { id: String(result.data.id), itemCount: Number(result.data.item_count) } : null;
+  };
+  const [fromSnapshot, toSnapshot] = await Promise.all([snapshotAt(fromDate), snapshotAt(toDate)]);
+  const fromSnapshotId = fromSnapshot?.id ?? null;
+  const toSnapshotId = toSnapshot?.id ?? null;
+  const snapshots = new Map([fromSnapshot, toSnapshot].filter((snapshot) => snapshot !== null).map((snapshot) => [snapshot.id, snapshot]));
+  const histories = await Promise.all([...snapshots.values()].map((snapshot) => loadHistorySnapshot(insforge, snapshot.id, snapshot.itemCount)));
+  return { history: histories.flat(), fromSnapshotId, toSnapshotId };
 }
 
 export async function loadInventorySettings() {

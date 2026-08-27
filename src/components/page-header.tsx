@@ -1,52 +1,37 @@
-import type { LucideIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-
+/**
+ * Encabezado de una línea (README §"Sistema de diseño del rediseño", regla 2
+ * "Fuera el PageHeader decorativo"). Reemplaza la tarjeta rounded-3xl con
+ * franjas diagonales, borde amarillo y eyebrow: ahora es título + subtítulo
+ * con datos (no descripción) y hasta dos botones a la derecha, separados del
+ * contenido por un borde inferior de 1px.
+ */
 export function PageHeader({
-  eyebrow,
   title,
-  description,
-  icon: Icon,
-  action,
+  subtitle,
+  actions,
 }: {
-  eyebrow: string;
   title: string;
-  description: string;
-  icon?: LucideIcon;
-  action?: React.ReactNode;
+  /** Cifras/estado de la pantalla, p.ej. "2.418 referencias · carga del 24 ago, 8:15". No es una descripción de la pantalla. */
+  subtitle?: React.ReactNode;
+  actions?: React.ReactNode;
 }) {
   return (
-    <header className="racing-stripe relative mb-7 overflow-hidden rounded-3xl border border-border/80 bg-card/95 px-5 py-6 shadow-[0_1px_2px_hsl(var(--foreground)/0.04),0_14px_36px_hsl(var(--foreground)/0.035)] sm:px-7 sm:py-7">
-      <div className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
-      <div className="absolute -right-16 -top-20 size-56 rounded-full bg-primary/10 blur-3xl" aria-hidden="true" />
-      <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-        <div className="flex max-w-3xl items-start gap-4">
-          {Icon && (
-            <div className="hidden size-12 shrink-0 place-items-center rounded-2xl border border-primary/25 bg-secondary text-primary shadow-sm sm:grid">
-              <Icon className="size-5" aria-hidden="true" />
-            </div>
-          )}
-          <div>
-            <Badge
-              variant="outline"
-              className="mb-3 gap-2 border-primary/35 bg-primary/10 uppercase tracking-[0.14em]"
-            >
-              {Icon && <Icon className="sm:hidden" aria-hidden="true" />}
-              {eyebrow}
-            </Badge>
-            <h1 className="font-display text-3xl font-bold uppercase leading-[0.95] tracking-wide sm:text-4xl">
-              {title}
-            </h1>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-              {description}
-            </p>
-          </div>
-        </div>
-        {action && (
-          <div className="w-full shrink-0 [&>*]:w-full md:w-auto md:[&>*]:w-auto">
-            {action}
-          </div>
+    <header className="flex flex-col gap-3 border-b pb-4 lg:min-h-[72px] lg:flex-row lg:items-end lg:justify-between lg:gap-4">
+      <div className="min-w-0">
+        <h1 className="hidden font-display text-[30px] font-extrabold uppercase leading-none tracking-[0.03em] lg:block">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-[13px] leading-relaxed text-muted-foreground lg:mt-2 lg:text-[13.5px]">
+            {subtitle}
+          </p>
         )}
       </div>
+      {actions && (
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 [&>*]:flex-1 lg:w-auto lg:[&>*]:flex-none">
+          {actions}
+        </div>
+      )}
     </header>
   );
 }

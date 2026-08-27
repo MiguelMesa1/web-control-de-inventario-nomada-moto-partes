@@ -18,19 +18,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import type { ImportRun } from "@/types/inventory";
 
 const dateTime = new Intl.DateTimeFormat("es-CO", {
   dateStyle: "medium",
   timeStyle: "short",
+});
+const timeOnly = new Intl.DateTimeFormat("es-CO", { timeStyle: "short" });
+const dayLabelFormat = new Intl.DateTimeFormat("es-CO", {
+  day: "numeric",
+  month: "short",
 });
 
 function visibleErrorMessage(message: string) {
@@ -43,18 +41,49 @@ function visibleErrorMessage(message: string) {
   return message;
 }
 
+function dayKey(iso: string) {
+  return new Date(iso).toDateString();
+}
+
+function dayLabel(iso: string) {
+  const date = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) {
+    return `Hoy · ${dayLabelFormat.format(date)}`;
+  }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `Ayer · ${dayLabelFormat.format(date)}`;
+  }
+  return dayLabelFormat.format(date);
+}
+
+/** Agrupa las cargas por día calendario para el separador de línea de tiempo
+ *  (README §"08 · Historial") — pura derivación de `createdAt`, ya presente
+ *  en cada `ImportRun`. */
+function groupByDay(runs: ImportRun[]) {
+  const groups: Array<{ key: string; label: string; runs: ImportRun[] }> = [];
+  for (const run of runs) {
+    const key = dayKey(run.createdAt);
+    const existing = groups.find((group) => group.key === key);
+    if (existing) existing.runs.push(run);
+    else groups.push({ key, label: dayLabel(run.createdAt), runs: [run] });
+  }
+  return groups;
+}
+
 export function HistoryPage() {
   const { importRuns, snapshots } = useInventoryData();
   const success = importRuns.filter((run) => run.status === "completed").length;
   const failed = importRuns.filter((run) => run.status === "failed").length;
+  const groups = groupByDay(importRuns);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Trazabilidad operativa"
         title="Historial de cargas"
-        description="Consulta qué archivo se procesó, cuándo ocurrió y si llegó a convertirse en inventario vigente."
-        icon={History}
+        subtitle={`${importRuns.length} cargas registradas · ${snapshots.length} instantáneas retenidas`}
       />
 
       <section className="grid gap-4 sm:grid-cols-3">
@@ -121,59 +150,86 @@ export function HistoryPage() {
             Las fallidas se conservan como evidencia, pero no modifican existencias.
           </CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Archivo</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Filas</TableHead>
-                <TableHead>Fecha del archivo</TableHead>
-                <TableHead>Procesado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {importRuns.map((run) => (
-                <TableRow key={run.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2 font-medium">
-                      <FileSpreadsheet className="size-4 text-primary" />
-                      {run.filename}
-                    </div>
-                    {run.errorMessage && (
-                      <p className="mt-1 max-w-md text-xs text-destructive">
-                        {visibleErrorMessage(run.errorMessage)}
-                      </p>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        run.status === "failed"
-                          ? "destructive"
-                          : run.status === "processing"
-                            ? "outline"
-                            : "secondary"
-                      }
+        <CardContent className="flex flex-col gap-5 p-0 pb-4">
+          {groups.map((group) => (
+            <div key={group.key} className="flex flex-col">
+              <p className="border-b bg-table-header px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                {group.label}
+              </p>
+              <div className="divide-y divide-row-separator">
+                {group.runs.map((run) => {
+                  const failedRun = run.status === "failed";
+                  const applied = failedRun ? 0 : run.itemCount;
+                  return (
+                    <div
+                      key={run.id}
+                      className={cn(
+                        "grid grid-cols-[16px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 py-3 sm:grid-cols-[16px_minmax(0,1fr)_190px_120px_auto]",
+                        failedRun && "shadow-[inset_3px_0_0_hsl(var(--destructive))]",
+                      )}
                     >
-                      {run.status === "completed"
-                        ? "Completada"
-                        : run.status === "processing"
-                          ? "Procesando"
-                          : "Rechazada"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="tabular-nums">{run.itemCount}</TableCell>
-                  <TableCell>
-                    {run.sourceExportedAt
-                      ? dateTime.format(new Date(run.sourceExportedAt))
-                      : "—"}
-                  </TableCell>
-                  <TableCell>{dateTime.format(new Date(run.createdAt))}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      <span
+                        className={cn(
+                          "size-2.5 justify-self-center rounded-full",
+                          failedRun ? "bg-destructive" : "bg-success",
+                        )}
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 truncate text-[13.5px] font-semibold">
+                          <FileSpreadsheet className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          {run.filename}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {timeOnly.format(new Date(run.createdAt))} · Usuario autorizado
+                        </p>
+                        {run.errorMessage && (
+                          <p className="mt-1 max-w-md text-xs text-destructive">
+                            {visibleErrorMessage(run.errorMessage)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        {!failedRun && (
+                          <>
+                            <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                              <div className="h-full w-full rounded-full bg-success" />
+                            </div>
+                            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                              {applied.toLocaleString("es-CO")}/{run.itemCount.toLocaleString("es-CO")} filas
+                            </p>
+                          </>
+                        )}
+                      </div>
+                      <p
+                        className={cn(
+                          "text-[13px] font-semibold",
+                          failedRun ? "text-destructive" : "text-success",
+                        )}
+                      >
+                        {run.status === "completed"
+                          ? "Completada"
+                          : run.status === "processing"
+                            ? "Procesando"
+                            : "Rechazada"}
+                      </p>
+                      <Badge variant="outline" className="w-fit justify-self-start text-[11px] sm:justify-self-end">
+                        {run.sourceExportedAt ? dateTime.format(new Date(run.sourceExportedAt)) : "—"}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {importRuns.length === 0 && (
+            <div className="grid min-h-40 place-items-center px-4 text-center">
+              <div>
+                <History className="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
+                <p className="mt-3 font-semibold">Todavía no hay cargas registradas</p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -3,13 +3,13 @@
 import {
   Boxes,
   ChevronDown,
-  CircleAlert,
+  ChevronRight,
   Copy,
+  Download,
+  Grid3X3,
   LayoutGrid,
-  Layers3,
   LoaderCircle,
   PackageCheck,
-  PackageX,
   Pencil,
   Plus,
   RotateCcw,
@@ -18,7 +18,7 @@ import {
   Sparkles,
   TableProperties,
   Trash2,
-  Warehouse,
+  Wrench,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { type CSSProperties, useDeferredValue, useMemo, useState } from "react";
@@ -38,6 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import {
   Tabs,
@@ -48,15 +49,13 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { getPlasticKitColorStyle } from "@/lib/inventory/plastic-kit-colors";
-import {
-  normalizePlasticKitHeadlight,
-  plasticKitLineSupportsHeadlight,
-} from "@/lib/inventory/plastic-kit-headlight";
+import { normalizePlasticKitHeadlight } from "@/lib/inventory/plastic-kit-headlight";
 import {
   calculatePlasticKitAvailability,
   comparePlasticKitsForDisplay,
@@ -72,6 +71,7 @@ import {
 import {
   normalizeInventoryText,
 } from "@/lib/inventory/priority-lines";
+import { cn } from "@/lib/utils";
 import type { PlasticKitAvailability, PlasticKitDefinition } from "@/types/inventory";
 
 const number = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 });
@@ -85,6 +85,11 @@ function kitLine(kit: PlasticKitDefinition) {
 
 function kitIncludesHeadlight(kit: PlasticKitDefinition) {
   return normalizePlasticKitHeadlight(kitLine(kit), kit.hasHeadlight);
+}
+
+function kitFamilyLabel(kit: PlasticKitDefinition) {
+  const family = getPlasticKitFamily(kit);
+  return PLASTIC_KIT_FAMILIES.find((item) => item.id === family)?.label ?? "Otra línea";
 }
 
 function duplicateKitName(name: string, existingNames: string[]) {
@@ -107,21 +112,267 @@ const PlasticKitDialog = dynamic(
   { ssr: false },
 );
 
-function StockBadge({ kit, threshold }: { kit: PlasticKitAvailability; threshold: number }) {
-  if (kit.available <= 0) {
-    return <Badge variant="destructive"><PackageX /> Agotado</Badge>;
-  }
-  if (kit.available <= threshold) {
-    return (
-      <Badge variant="outline" className="border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300">
-        <CircleAlert /> Bajo
-      </Badge>
-    );
-  }
+function kitLevel(kit: PlasticKitAvailability, threshold: number): "exhausted" | "low" | "ok" {
+  if (kit.available <= 0) return "exhausted";
+  if (kit.available <= threshold) return "low";
+  return "ok";
+}
+
+function KitLevelLabel({ kit, threshold }: { kit: PlasticKitAvailability; threshold: number }) {
+  const level = kitLevel(kit, threshold);
   return (
-    <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-      <PackageCheck /> Disponible
-    </Badge>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 text-[11.5px] font-bold",
+        level === "exhausted" && "text-destructive",
+        level === "low" && "text-warning",
+        level === "ok" && "text-success",
+      )}
+    >
+      <span
+        className={cn(
+          "size-[7px] rounded-full",
+          level === "exhausted" && "bg-destructive",
+          level === "low" && "bg-primary",
+          level === "ok" && "bg-success",
+        )}
+        aria-hidden="true"
+      />
+      {level === "exhausted" ? "Agotado" : level === "low" ? "Bajo" : "Disponible"}
+    </span>
+  );
+}
+
+function ColorSwatch({ color, className }: { color: string; className?: string }) {
+  const style = getPlasticKitColorStyle(color);
+  return (
+    <span
+      className={cn("inline-block shrink-0 rounded-full border", className)}
+      style={{ background: style.surface, borderColor: style.border }}
+      aria-hidden="true"
+    />
+  );
+}
+
+function FeaturedKitCard({
+  kit,
+  position,
+  threshold,
+}: {
+  kit: PlasticKitAvailability;
+  position: number;
+  threshold: number;
+}) {
+  const colorStyle = getPlasticKitColorStyle(kit.color);
+  const limitingPart = kit.parts.find((part) => part.isLimiting) ?? kit.parts[0];
+
+  return (
+    <article
+      className="relative min-h-[174px] overflow-hidden rounded-2xl border bg-card p-5 shadow-sm transition-[box-shadow,border-color] duration-200 hover:shadow-lg motion-reduce:transition-none"
+      style={{ borderColor: colorStyle.border }}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-12 size-36 rounded-full opacity-70 blur-2xl"
+        style={{ backgroundColor: colorStyle.surface }}
+        aria-hidden="true"
+      />
+      <div className="relative flex h-full flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              className="grid size-11 shrink-0 place-items-center rounded-xl border"
+              style={{ backgroundColor: colorStyle.surface, borderColor: colorStyle.border }}
+            >
+              <Boxes className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                Capacidad #{position}
+              </p>
+              <h3 className="mt-1 truncate font-display text-lg font-bold uppercase">
+                {getPlasticKitModel(kit)}
+              </h3>
+            </div>
+          </div>
+          <ColorSwatch color={kit.color} className="size-7 border-2 shadow-sm" />
+        </div>
+
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="font-display text-[38px] font-bold leading-none tabular-nums">
+              {number.format(kit.available)}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-muted-foreground">kits armables</p>
+          </div>
+          <div className="text-right">
+            <KitLevelLabel kit={kit} threshold={threshold} />
+            <p className="mt-1 text-xs font-semibold">{kit.color}</p>
+          </div>
+        </div>
+
+        {limitingPart ? (
+          <p className="mt-auto truncate border-t pt-3 text-xs text-muted-foreground">
+            Limita <strong className="font-semibold text-foreground">{limitingPart.productName}</strong>
+          </p>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function KitGalleryCard({
+  kit,
+  threshold,
+  maxAvailable,
+  isAdmin,
+  duplicating,
+  onDuplicate,
+  onEdit,
+  onDelete,
+}: {
+  kit: PlasticKitAvailability;
+  threshold: number;
+  maxAvailable: number;
+  isAdmin: boolean;
+  duplicating: boolean;
+  onDuplicate: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const colorStyle = getPlasticKitColorStyle(kit.color);
+  const limitingPart = kit.parts.find((part) => part.isLimiting) ?? kit.parts[0];
+  const capacityPercent = Math.max(4, Math.round((kit.available / maxAvailable) * 100));
+  const headlightValue = kitIncludesHeadlight(kit);
+
+  return (
+    <article
+      className="plastic-kit-color-card group overflow-hidden rounded-2xl border bg-card shadow-sm transition-[box-shadow,border-color] duration-200 hover:shadow-lg motion-reduce:transition-none"
+      data-kit-emphasis={colorStyle.emphasis}
+      style={
+        {
+          "--kit-border": colorStyle.border,
+          "--kit-border-dark": colorStyle.borderDark,
+          "--kit-surface": colorStyle.surface,
+          "--kit-surface-dark": colorStyle.surfaceDark,
+        } as CSSProperties
+      }
+    >
+      <div className="relative overflow-hidden border-b bg-background/80 p-5">
+        <div
+          className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full border-[18px] opacity-30"
+          style={{ borderColor: colorStyle.border }}
+          aria-hidden="true"
+        />
+        <div className="relative min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{kitFamilyLabel(kit)}</Badge>
+            <Badge variant="outline" className="bg-background/80 text-foreground">
+              <ColorSwatch color={kit.color} className="size-3" />
+              {kit.color}
+            </Badge>
+          </div>
+          <h3 className="mt-4 line-clamp-2 font-display text-xl font-bold uppercase leading-tight text-foreground" title={kit.name}>
+            {kit.name}
+          </h3>
+          <p className="mt-1 text-xs font-semibold text-foreground/75">
+            {getPlasticKitModel(kit)} · {kit.parts.length} piezas configuradas
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 p-5">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+              Capacidad actual
+            </p>
+            <p className="mt-1 font-display text-[38px] font-bold leading-none tabular-nums">
+              {number.format(kit.available)}
+              <span className="ml-2 font-sans text-xs font-semibold normal-case text-muted-foreground">
+                kits
+              </span>
+            </p>
+          </div>
+          <KitLevelLabel kit={kit} threshold={threshold} />
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+            <span>Capacidad frente al mejor kit</span>
+            <span className="tabular-nums">{capacityPercent}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <div
+              className={cn(
+                "h-full rounded-full",
+                kit.available <= 0 && "bg-destructive",
+                kit.available > 0 && kit.available <= threshold && "bg-primary",
+                kit.available > threshold && "bg-success",
+              )}
+              style={{ width: `${capacityPercent}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl border bg-muted/35 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Composición</p>
+            <p className="mt-1 font-display text-xl font-bold tabular-nums">{kit.parts.length} piezas</p>
+          </div>
+          <div className="rounded-xl border bg-muted/35 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Farola</p>
+            <p className="mt-1 truncate text-sm font-bold">
+              {headlightValue === null ? "No aplica" : headlightValue ? "Incluida" : "Sin farola"}
+            </p>
+          </div>
+        </div>
+
+        {limitingPart ? (
+          <div className="rounded-xl border border-primary/35 bg-primary/10 p-3">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-warning">
+              <Wrench className="size-3.5" aria-hidden="true" />
+              Pieza limitante
+            </div>
+            <p className="mt-1.5 truncate text-sm font-semibold" title={limitingPart.productName}>
+              {limitingPart.productName}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              SKU {limitingPart.sku} · {number.format(limitingPart.available)} disponibles
+            </p>
+          </div>
+        ) : null}
+
+        <details className="group/details rounded-xl border">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+            Ver composición completa
+            <ChevronDown className="size-4 transition-transform group-open/details:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+          </summary>
+          <div className="flex flex-col gap-2 border-t p-3">
+            {kit.parts.map((part) => (
+              <div key={part.sku} className="flex items-center justify-between gap-3 text-xs">
+                <span className="min-w-0 truncate" title={part.productName}>{part.productName}</span>
+                <span className="shrink-0 font-bold tabular-nums">{number.format(part.available)} disp.</span>
+              </div>
+            ))}
+          </div>
+        </details>
+
+        {isAdmin ? (
+          <div className="flex items-center gap-2 border-t pt-4">
+            <Button variant="outline" size="sm" className="flex-1" onClick={onEdit}>
+              <Pencil data-icon="inline-start" />
+              Editar
+            </Button>
+            <Button variant="ghost" size="icon" disabled={duplicating} onClick={onDuplicate} aria-label={`Duplicar ${kit.name}`}>
+              {duplicating ? <LoaderCircle className="animate-spin" /> : <Copy />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onDelete} aria-label={`Eliminar ${kit.name}`}>
+              <Trash2 />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
@@ -242,8 +493,21 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
   }
 
   const totalStock = kits.reduce((total, kit) => total + kit.available, 0);
-  const exhausted = kits.filter((kit) => kit.available <= 0).length;
-  const low = kits.filter((kit) => kit.available > 0 && kit.available <= lowStockThreshold).length;
+  const armableToday = kits.filter((kit) => kit.available > 0).length;
+  const readiness = kits.length ? Math.round((armableToday / kits.length) * 100) : 0;
+  const limitingParts = new Set(kits.flatMap((kit) => kit.limitingPartSkus)).size;
+  const bestKit = kits.reduce<PlasticKitAvailability | null>(
+    (best, kit) => (!best || kit.available > best.available ? kit : best),
+    null,
+  );
+  const featuredKits = [...kits]
+    .filter((kit) => kit.available > 0)
+    .sort((a, b) => b.available - a.available)
+    .slice(0, 3);
+  const maxVisibleAvailability = Math.max(
+    1,
+    ...visibleKits.map((kit) => kit.available),
+  );
 
   function openCreate() {
     setEditing(null);
@@ -330,39 +594,153 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
     }
   }
 
+  function exportKits() {
+    const columns = ["Kit", "Modelo", "Color", "Farola", "Piezas", "Kits armables"];
+    const safeCell = (value: string | number) => {
+      const text = String(value);
+      const protectedText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${protectedText.replaceAll('"', '""')}"`;
+    };
+    const rows = kits.map((kit) => {
+      const headlightValue = kitIncludesHeadlight(kit);
+      return [
+        kit.name,
+        getPlasticKitModel(kit),
+        kit.color,
+        headlightValue === null ? "No aplica" : headlightValue ? "Con farola" : "Sin farola",
+        kit.parts.length,
+        kit.available,
+      ]
+        .map(safeCell)
+        .join(",");
+    });
+    const blob = new Blob(
+      [`﻿${columns.map(safeCell).join(",")}\r\n${rows.join("\r\n")}`],
+      { type: "text/csv;charset=utf-8" },
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `kits-plastico-nomada-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Inventario compuesto"
         title="Kit Plástico"
-        description="Crea cada kit con sus piezas individuales. La disponibilidad se calcula automáticamente usando la pieza que alcanza para menos kits."
-        icon={Boxes}
-        action={isAdmin ? <Button onClick={openCreate}><Plus /> Crear kit</Button> : undefined}
+        subtitle={`${kits.length} combinaciones modelo · color — ${armableToday} armables hoy`}
+        actions={
+          <>
+            <Button variant="outline" onClick={exportKits} disabled={kits.length === 0}>
+              <Download data-icon="inline-start" />
+              Exportar
+            </Button>
+            {isAdmin && (
+              <Button onClick={openCreate}>
+                <Plus data-icon="inline-start" />
+                Definir kit
+              </Button>
+            )}
+          </>
+        }
       />
 
-      <section aria-label="Resumen de kits plásticos" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Kits creados", value: number.format(kits.length), icon: Boxes },
-          { label: "Unidades armables", value: number.format(totalStock), icon: Warehouse },
-          { label: "Kits agotados", value: number.format(exhausted), icon: PackageX },
-          { label: "Con stock bajo", value: number.format(low), icon: CircleAlert },
-        ].map((metric) => (
-          <Card key={metric.label} className="racing-stripe">
-            <CardContent className="flex items-center justify-between gap-4 pt-5 sm:pt-6">
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground">{metric.label}</p>
-                <p className="mt-1 font-display text-3xl font-bold tabular-nums">{metric.value}</p>
+      <section className="relative overflow-hidden rounded-2xl border border-secondary bg-secondary text-secondary-foreground shadow-lg">
+        <div className="absolute inset-x-0 top-0 h-1.5 bg-primary" aria-hidden="true" />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "linear-gradient(135deg, currentColor 1px, transparent 1px)",
+            backgroundSize: "22px 22px",
+          }}
+          aria-hidden="true"
+        />
+        <div className="relative grid gap-8 p-5 pt-7 sm:p-7 sm:pt-9 lg:grid-cols-[minmax(0,1fr)_minmax(430px,0.85fr)] lg:items-center">
+          <div>
+            <Badge className="border border-primary/50 bg-primary text-primary-foreground shadow-sm">
+              <Sparkles className="size-3.5" aria-hidden="true" />
+              Taller de kits
+            </Badge>
+            <h2 className="mt-5 max-w-[17ch] font-display text-[38px] font-bold uppercase leading-[0.92] sm:text-5xl">
+              Convierte piezas en kits listos para vender.
+            </h2>
+            <p className="mt-4 max-w-[60ch] text-sm leading-relaxed text-secondary-foreground/70">
+              Cruza el inventario de cada pieza y descubre de inmediato qué modelos y colores puedes armar hoy.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Badge variant="outline" className="border-secondary-foreground/20 bg-secondary-foreground/10 text-secondary-foreground">
+                <PackageCheck className="size-3.5" aria-hidden="true" />
+                {armableToday} combinaciones listas
+              </Badge>
+              <Badge variant="outline" className="border-secondary-foreground/20 bg-secondary-foreground/10 text-secondary-foreground">
+                <Wrench className="size-3.5" aria-hidden="true" />
+                {limitingParts} piezas limitantes
+              </Badge>
+            </div>
+          </div>
+          <div className="grid gap-3 rounded-2xl border border-secondary-foreground/15 bg-secondary-foreground/[0.06] p-4 backdrop-blur-sm sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center">
+            <div className="relative mx-auto grid size-32 place-items-center rounded-full bg-secondary-foreground/10 p-2">
+              <div
+                className="absolute inset-2 rounded-full"
+                style={{
+                  background: `conic-gradient(hsl(var(--primary)) ${readiness}%, hsl(var(--secondary-foreground) / 0.12) ${readiness}%)`,
+                }}
+                aria-hidden="true"
+              />
+              <div className="relative grid size-[92px] place-items-center rounded-full bg-secondary text-center shadow-inner">
+                <div>
+                  <p className="font-display text-3xl font-bold text-primary tabular-nums">{readiness}%</p>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-secondary-foreground/55">operativo</p>
+                </div>
               </div>
-              <span className="grid size-11 place-items-center rounded-xl bg-primary text-primary-foreground">
-                <metric.icon className="size-5" aria-hidden="true" />
-              </span>
-            </CardContent>
-          </Card>
-        ))}
+            </div>
+            <div className="min-w-0 rounded-xl border border-secondary-foreground/10 bg-secondary-foreground/[0.06] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-secondary-foreground/55">
+                Capacidad total hoy
+              </p>
+              <p className="mt-1 font-display text-4xl font-bold text-primary tabular-nums">
+                {number.format(totalStock)}
+              </p>
+              <p className="text-xs text-secondary-foreground/65">kits posibles entre todas las combinaciones</p>
+              {bestKit ? (
+                <div className="mt-4 border-t border-secondary-foreground/15 pt-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-secondary-foreground/50">Mayor capacidad</p>
+                  <p className="mt-1 truncate text-sm font-semibold">{getPlasticKitModel(bestKit)} · {bestKit.color}</p>
+                  <p className="mt-0.5 text-xs text-secondary-foreground/60">{number.format(bestKit.available)} kits armables</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
       </section>
 
+      {featuredKits.length ? (
+        <section aria-labelledby="featured-kits-title">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">Producción inmediata</p>
+              <h2 id="featured-kits-title" className="mt-1 font-display text-2xl font-bold uppercase">Listos para armar</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">Las tres combinaciones con mayor capacidad disponible.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {featuredKits.map((kit, index) => (
+              <FeaturedKitCard
+                key={kit.id}
+                kit={kit}
+                position={index + 1}
+                threshold={lowStockThreshold}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <Card>
-        <Tabs defaultValue="cards">
+        <Tabs defaultValue="gallery">
           <CardHeader className="gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -372,12 +750,15 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-center">
-              <TabsList className="grid w-full grid-cols-2 sm:w-auto [&_svg]:size-4">
-                <TabsTrigger value="cards">
-                  <LayoutGrid aria-hidden="true" /> Tarjetas
+              <TabsList className="grid w-full grid-cols-3 sm:w-auto [&_svg]:size-4">
+                <TabsTrigger value="gallery">
+                  <LayoutGrid aria-hidden="true" /> Galería
+                </TabsTrigger>
+                <TabsTrigger value="table">
+                  <TableProperties aria-hidden="true" /> Tabla
                 </TabsTrigger>
                 <TabsTrigger value="matrix">
-                  <TableProperties aria-hidden="true" /> Matriz
+                  <Grid3X3 aria-hidden="true" /> Matriz
                 </TabsTrigger>
               </TabsList>
               <div className="relative w-full sm:flex-1 lg:w-80">
@@ -386,7 +767,7 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Por nombre de kit, pieza o SKU…"
-                  className="h-11 pl-10"
+                  className="h-[38px] pl-10"
                   aria-label="Buscar kits"
                 />
               </div>
@@ -396,13 +777,13 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
             className="overflow-hidden rounded-2xl border bg-muted/25"
             aria-labelledby="kit-combination-title"
           >
-            <div className="flex flex-col gap-3 border-b bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground text-background">
                   <Sparkles className="size-5" aria-hidden="true" />
                 </span>
                 <div>
-                  <h3 id="kit-combination-title" className="font-display text-lg font-bold uppercase">
+                  <h3 id="kit-combination-title" className="font-display text-base font-bold uppercase">
                     Explora tu combinación
                   </h3>
                   <p className="text-sm text-muted-foreground">
@@ -431,14 +812,17 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
 
             <div className="flex flex-col gap-4 p-4">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                <span className="grid size-6 place-items-center rounded-full bg-primary text-primary-foreground">1</span>
+                <span className="grid size-6 place-items-center rounded-full bg-foreground text-background">1</span>
                 Elige la familia
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7" role="group" aria-label="Elegir familia de moto">
                 <Button
                   type="button"
-                  variant={family === "all" ? "default" : "outline"}
-                  className="h-auto min-h-14 justify-between rounded-xl px-3"
+                  variant="outline"
+                  className={cn(
+                    "h-auto min-h-14 justify-between rounded-xl px-3",
+                    family === "all" && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background",
+                  )}
                   aria-pressed={family === "all"}
                   onClick={() => {
                     setFamily("all");
@@ -456,8 +840,11 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                     <Button
                       key={item.id}
                       type="button"
-                      variant={selected ? "default" : "outline"}
-                      className="h-auto min-h-14 justify-between rounded-xl px-3"
+                      variant="outline"
+                      className={cn(
+                        "h-auto min-h-14 justify-between rounded-xl px-3",
+                        selected && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background",
+                      )}
                       aria-pressed={selected}
                       aria-label={`${item.label}: ${count} kits`}
                       onClick={() => {
@@ -476,15 +863,18 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
               {selectedFamily?.models.length ? (
                 <div className="rounded-xl border bg-background/70 p-3">
                   <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    <span className="mr-2 inline-grid size-6 place-items-center rounded-full bg-primary text-primary-foreground">2</span>
+                    <span className="mr-2 inline-grid size-6 place-items-center rounded-full bg-foreground text-background">2</span>
                     Ahora elige el modelo de {selectedFamily.label}
                   </p>
                   <div className="flex flex-wrap gap-2" role="group" aria-label={`Elegir modelo de ${selectedFamily.label}`}>
                     <Button
                       type="button"
                       size="sm"
-                      variant={model === "all" ? "default" : "outline"}
-                      className="min-h-11 rounded-full"
+                      variant="outline"
+                      className={cn(
+                        "min-h-11 rounded-full",
+                        model === "all" && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background",
+                      )}
                       aria-pressed={model === "all"}
                       onClick={() => setModel("all")}
                     >
@@ -493,14 +883,18 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                     {selectedFamily.models.map((item) => {
                       const key = normalizeInventoryText(item);
                       const count = modelCounts.get(key) ?? 0;
+                      const selected = model === key;
                       return (
                         <Button
                           key={item}
                           type="button"
                           size="sm"
-                          variant={model === key ? "default" : "outline"}
-                          className="min-h-11 rounded-full"
-                          aria-pressed={model === key}
+                          variant="outline"
+                          className={cn(
+                            "min-h-11 rounded-full",
+                            selected && "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background",
+                          )}
+                          aria-pressed={selected}
                           onClick={() => {
                             setModel(key);
                             setColor("all");
@@ -525,16 +919,26 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                   <Select value={color} onValueChange={setColor}>
                     <SelectTrigger id="kit-color-filter" aria-label="Filtrar por color">
                       <SelectValue>
-                        {color === "all"
-                          ? "Todos los colores"
-                          : colorOptions.find(([key]) => key === color)?.[1].label ?? color}
+                        <span className="flex items-center gap-2">
+                          {color !== "all" && <ColorSwatch color={colorOptions.find(([key]) => key === color)?.[1].label ?? color} className="size-3.5" />}
+                          {color === "all"
+                            ? "Todos los colores"
+                            : colorOptions.find(([key]) => key === color)?.[1].label ?? color}
+                        </span>
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todos los colores</SelectItem>
-                      {colorOptions.map(([key, option]) => (
-                        <SelectItem key={key} value={key}>{option.label} ({option.count})</SelectItem>
-                      ))}
+                      <SelectGroup>
+                        <SelectItem value="all">Todos los colores</SelectItem>
+                        {colorOptions.map(([key, option]) => (
+                          <SelectItem key={key} value={key}>
+                            <span className="flex items-center gap-2">
+                              <ColorSwatch color={option.label} className="size-3.5" />
+                              {option.label} ({option.count})
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>
@@ -552,10 +956,12 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todas las presentaciones</SelectItem>
-                      <SelectItem value="with">Con farola ({headlightCounts.withHeadlight})</SelectItem>
-                      <SelectItem value="without">Sin farola ({headlightCounts.withoutHeadlight})</SelectItem>
-                      <SelectItem value="not-applicable">No aplica ({headlightCounts.notApplicable})</SelectItem>
+                      <SelectGroup>
+                        <SelectItem value="all">Todas las presentaciones</SelectItem>
+                        <SelectItem value="with">Con farola ({headlightCounts.withHeadlight})</SelectItem>
+                        <SelectItem value="without">Sin farola ({headlightCounts.withoutHeadlight})</SelectItem>
+                        <SelectItem value="not-applicable">No aplica ({headlightCounts.notApplicable})</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>
@@ -563,123 +969,200 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
             </div>
           </section>
           </CardHeader>
-          <TabsContent value="cards" className="mt-0">
-            <CardContent>
+          <TabsContent value="gallery" className="mt-0">
+            <CardContent className="pt-0">
+              {visibleKits.length ? (
+                <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                  {visibleKits.map((kit) => (
+                    <KitGalleryCard
+                      key={kit.id}
+                      kit={kit}
+                      threshold={lowStockThreshold}
+                      maxAvailable={maxVisibleAvailability}
+                      isAdmin={isAdmin}
+                      duplicating={duplicatingId === kit.id}
+                      onDuplicate={() => void duplicateKit(kit)}
+                      onEdit={() => openEdit(kit)}
+                      onDelete={() => setDeleteTarget(kit)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={Boxes}
+                  tone={kits.length ? "neutral" : "brand"}
+                  title={kits.length ? "No hay kits para esta combinación" : "Crea tu primer kit plástico"}
+                  description={
+                    kits.length
+                      ? "Prueba otra búsqueda o selecciona todas las líneas."
+                      : "Selecciona aquí las piezas individuales que componen cada combo."
+                  }
+                  action={
+                    kits.length ? (
+                      <Button variant="outline" onClick={resetSelection}>
+                        Limpiar filtros
+                      </Button>
+                    ) : isAdmin ? (
+                      <Button onClick={openCreate}>
+                        <Plus data-icon="inline-start" />
+                        Crear primer kit
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              )}
+            </CardContent>
+          </TabsContent>
+          <TabsContent value="table" className="mt-0">
+            <CardContent className="p-0 pb-2">
           {visibleKits.length ? (
-            <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {visibleKits.map((kit) => {
-                const colorStyle = getPlasticKitColorStyle(kit.color);
-                return (
-                  <article
-                    key={kit.id}
-                    className="plastic-kit-color-card overflow-hidden rounded-2xl border-2 [content-visibility:auto] [contain-intrinsic-size:14rem]"
-                    data-kit-emphasis={colorStyle.emphasis}
-                    style={
-                      {
-                        "--kit-border": colorStyle.border,
-                        "--kit-border-dark": colorStyle.borderDark,
-                        "--kit-surface": colorStyle.surface,
-                        "--kit-surface-dark": colorStyle.surfaceDark,
-                      } as CSSProperties
-                    }
-                  >
-                    <div className="border-b px-4 pb-4 pt-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <Badge
-                            variant="secondary"
-                            className="border border-foreground/15 bg-background/80 text-foreground shadow-sm backdrop-blur-sm dark:border-transparent dark:bg-secondary dark:text-secondary-foreground dark:shadow-none dark:backdrop-blur-none"
-                          >
-                            {getPlasticKitModel(kit)}
-                          </Badge>
-                          <Badge variant="outline" className="gap-1.5 bg-background/45">
-                            <span className="plastic-kit-color-dot" aria-hidden="true" />
-                            {kit.color}
-                          </Badge>
-                          {kit.hasHeadlight !== null &&
-                            plasticKitLineSupportsHeadlight(kit.model ?? kit.brand) && (
-                              <Badge variant="outline" className="bg-background/35">
-                                {kit.hasHeadlight ? "Con farola" : "Sin farola"}
-                              </Badge>
-                            )}
-                        </div>
-                        <div className="min-w-[5.75rem] shrink-0 rounded-xl border bg-background/45 px-3 py-2 text-right shadow-sm backdrop-blur-sm">
-                          <p className="font-display text-3xl font-bold tabular-nums">{number.format(kit.available)}</p>
-                          <p className="text-[0.68rem] font-bold uppercase tracking-wide text-muted-foreground">kits armables</p>
-                        </div>
-                      </div>
-                      <h3 className="mt-3 break-words font-display text-lg font-bold uppercase leading-tight" title={kit.name}>{kit.name}</h3>
-                      <div className="mt-2"><StockBadge kit={kit} threshold={lowStockThreshold} /></div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 bg-background/20 px-3 py-2">
-                      <p className="flex items-center gap-2 text-sm font-semibold"><Layers3 className="size-4" /> {kit.parts.length} piezas</p>
-                      {isAdmin && (
-                        <div className="flex gap-1 rounded-xl border bg-background/35 p-0.5">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-11"
-                            disabled={duplicatingId === kit.id}
-                            onClick={() => void duplicateKit(kit)}
-                            aria-label={`Duplicar ${kit.name}`}
-                            title="Duplicar kit"
-                          >
-                            {duplicatingId === kit.id ? (
-                              <LoaderCircle className="animate-spin" />
-                            ) : (
-                              <Copy />
-                            )}
-                          </Button>
-                          <Button className="size-11" variant="ghost" size="icon" onClick={() => openEdit(kit)} aria-label={`Editar ${kit.name}`}><Pencil /></Button>
-                          <Button className="size-11" variant="ghost" size="icon" onClick={() => setDeleteTarget(kit)} aria-label={`Eliminar ${kit.name}`}><Trash2 /></Button>
-                        </div>
-                      )}
-                    </div>
-
-                    <details className="group border-t">
-                      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 bg-background/15 px-4 py-2 text-sm font-semibold transition-colors hover:bg-background/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                        Ver detalle de las piezas
-                        <ChevronDown className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
-                      </summary>
-                      <div className="grid gap-2 border-t bg-muted/15 p-3">
-                        {kit.parts.map((part) => (
-                          <div
-                            key={part.sku}
-                            className={`grid gap-2 rounded-lg border p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${part.isLimiting ? "border-primary/50 bg-primary/10" : "bg-background/60"}`}
-                          >
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-mono text-xs font-bold">{part.sku}</span>
-                                {part.isLimiting && <Badge variant="outline">Pieza limitante</Badge>}
-                                {!part.hasInventoryRecord && <Badge variant="destructive">No llegó en la carga</Badge>}
-                              </div>
-                              <p className="mt-1 truncate text-sm" title={part.productName}>{part.productName}</p>
-                            </div>
-                            <p className="text-sm sm:text-right">
-                              <span className="font-bold tabular-nums">{number.format(part.available)}</span> disp.
-                              <span className="block text-xs text-muted-foreground">{part.quantityRequired} por kit · {part.kitCapacity} kits</span>
+            <div>
+              <div className="hidden grid-cols-[minmax(0,1fr)_150px_110px_110px_34px] gap-3 border-y bg-table-header px-5 py-0 text-[10.5px] font-bold uppercase tracking-[0.1em] text-muted-foreground lg:grid">
+                <span className="flex h-10 items-center">Kit</span>
+                <span className="flex h-10 items-center">Pieza que limita</span>
+                <span className="flex h-10 items-center justify-end">Piezas</span>
+                <span className="flex h-10 items-center justify-end">Kits armables</span>
+                <span className="flex h-10 items-center" aria-hidden="true" />
+              </div>
+              <div className="divide-y divide-row-separator">
+                {visibleKits.map((kit) => {
+                  const limitingPart = kit.parts.find((part) => part.isLimiting) ?? kit.parts[0];
+                  const level = kitLevel(kit, lowStockThreshold);
+                  return (
+                    <details key={kit.id} className="group">
+                      <summary className="grid min-h-[62px] cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 [&::-webkit-details-marker]:hidden lg:grid-cols-[minmax(0,1fr)_150px_110px_110px_34px] lg:px-5 lg:py-0">
+                        <div className="flex min-h-12 min-w-0 items-center gap-2.5 py-2">
+                          <ColorSwatch color={kit.color} className="size-6 rounded-[7px] border-2" />
+                          <div className="min-w-0">
+                            <p className="truncate text-[13.5px] font-semibold">
+                              {getPlasticKitModel(kit)} · {kit.color}
+                            </p>
+                            <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                              {kit.parts.length} piezas · {kit.name}
                             </p>
                           </div>
-                        ))}
+                        </div>
+                        <div className="hidden min-w-0 lg:block">
+                          {limitingPart && (
+                            <p
+                              className={cn(
+                                "truncate text-xs font-semibold",
+                                level === "exhausted" && "text-destructive",
+                                level === "low" && "text-warning",
+                                level === "ok" && "text-muted-foreground",
+                              )}
+                            >
+                              {limitingPart.productName} · {number.format(limitingPart.available)}
+                            </p>
+                          )}
+                        </div>
+                        <p className="hidden text-right text-[13px] text-muted-foreground tabular-nums lg:block">
+                          {kit.parts.length}
+                        </p>
+                        <p className="hidden text-right font-display text-[22px] leading-none tabular-nums lg:block">
+                          {number.format(kit.available)}
+                        </p>
+                        <ChevronRight
+                          className="col-start-2 row-start-1 size-4 shrink-0 justify-self-end text-muted-foreground transition-transform group-open:rotate-90 lg:col-start-5 lg:justify-self-center"
+                          aria-hidden="true"
+                        />
+                        <div className="col-span-2 flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground lg:hidden">
+                          <KitLevelLabel kit={kit} threshold={lowStockThreshold} />
+                          {limitingPart && (
+                            <span className={cn(level === "exhausted" && "text-destructive", level === "low" && "text-warning")}>
+                              limita: {limitingPart.productName} · {number.format(limitingPart.available)}
+                            </span>
+                          )}
+                          <span className="ml-auto font-display text-lg text-foreground">
+                            {number.format(kit.available)} kits
+                          </span>
+                        </div>
+                      </summary>
+                      <div className="flex flex-col gap-3 bg-row-alt px-4 py-3 pl-[35px] md:px-5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <KitLevelLabel kit={kit} threshold={lowStockThreshold} />
+                          {isAdmin && (
+                            <div className="ml-auto flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                disabled={duplicatingId === kit.id}
+                                onClick={() => void duplicateKit(kit)}
+                                aria-label={`Duplicar ${kit.name}`}
+                                title="Duplicar kit"
+                              >
+                                {duplicatingId === kit.id ? (
+                                  <LoaderCircle className="size-4 animate-spin" />
+                                ) : (
+                                  <Copy className="size-4" />
+                                )}
+                              </Button>
+                              <Button variant="ghost" size="icon" className="size-8" onClick={() => openEdit(kit)} aria-label={`Editar ${kit.name}`}>
+                                <Pencil className="size-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="size-8" onClick={() => setDeleteTarget(kit)} aria-label={`Eliminar ${kit.name}`}>
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {kit.parts.map((part) => (
+                            <div
+                              key={part.sku}
+                              className={cn(
+                                "rounded-lg border bg-card p-2.5",
+                                part.isLimiting && "border-primary/50 bg-primary/10",
+                              )}
+                            >
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono text-[11px] font-bold">{part.sku}</span>
+                                {part.isLimiting && (
+                                  <span className="text-[10px] font-bold uppercase text-warning">limitante</span>
+                                )}
+                                {!part.hasInventoryRecord && (
+                                  <Badge variant="destructive" className="text-[10px]">No llegó</Badge>
+                                )}
+                              </div>
+                              <p className="mt-1 truncate text-xs" title={part.productName}>{part.productName}</p>
+                              <p className="mt-1 text-xs">
+                                <span className="font-bold tabular-nums">{number.format(part.available)}</span> disp. ·{" "}
+                                <span className="text-muted-foreground">{part.quantityRequired} por kit · {part.kitCapacity} kits</span>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </details>
-                  </article>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           ) : (
-            <div className="grid min-h-64 place-items-center rounded-xl border border-dashed p-8 text-center">
-              <div className="max-w-md">
-                <Boxes className="mx-auto size-10 text-muted-foreground" aria-hidden="true" />
-                <p className="mt-4 font-semibold">{kits.length ? "No hay kits para esta combinación" : "Crea tu primer kit plástico"}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {kits.length
+            <div className="p-4">
+              <EmptyState
+                icon={Boxes}
+                tone={kits.length ? "neutral" : "brand"}
+                title={kits.length ? "No hay kits para esta combinación" : "Crea tu primer kit plástico"}
+                description={
+                  kits.length
                     ? "Prueba otra búsqueda o selecciona todas las líneas."
-                    : "Ya no necesitas que el Excel incluya el producto combo: selecciona aquí las piezas individuales que lo componen."}
-                </p>
-                {!kits.length && isAdmin && <Button className="mt-5" onClick={openCreate}><Plus /> Crear primer kit</Button>}
-              </div>
+                    : "Selecciona aquí las piezas individuales que componen cada combo."
+                }
+                action={
+                  !kits.length && isAdmin ? (
+                    <Button onClick={openCreate}>
+                      <Plus data-icon="inline-start" />
+                      Crear primer kit
+                    </Button>
+                  ) : kits.length ? (
+                    <Button variant="outline" onClick={resetSelection}>
+                      Limpiar filtros
+                    </Button>
+                  ) : undefined
+                }
+              />
             </div>
           )}
             </CardContent>
@@ -693,20 +1176,11 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
                   onOpenKit={isAdmin ? openEdit : undefined}
                 />
               ) : (
-                <div className="grid min-h-64 place-items-center rounded-xl border border-dashed p-8 text-center">
-                  <div className="max-w-md">
-                    <TableProperties
-                      className="mx-auto size-10 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <p className="mt-4 font-semibold">
-                      No hay kits para construir la matriz
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Prueba otra búsqueda o usa “Ver todo” para recuperar todas las combinaciones.
-                    </p>
-                  </div>
-                </div>
+                <EmptyState
+                  icon={TableProperties}
+                  title="No hay kits para construir la matriz"
+                  description="Prueba otra búsqueda o usa “Ver todo” para recuperar todas las combinaciones."
+                />
               )}
             </CardContent>
           </TabsContent>

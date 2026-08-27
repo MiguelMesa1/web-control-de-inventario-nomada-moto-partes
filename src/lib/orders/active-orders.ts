@@ -46,3 +46,12 @@ export function excludeActiveOrderRows<T extends { sku: string }>(
       : new Set(activeOrderSkus);
   return rows.filter((row) => !activeSkus.has(row.sku));
 }
+
+export function countExhaustedReordersWithoutActiveOrder(
+  rows: Array<{ sku: string; status: string }>,
+  activeOrderSkus: Iterable<string>,
+) {
+  return excludeActiveOrderRows(rows, activeOrderSkus).filter(
+    (row) => row.status === "exhausted",
+  ).length;
+}

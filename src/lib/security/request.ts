@@ -2,6 +2,40 @@ import { NextResponse } from "next/server";
 import { isAllowedAppOrigin } from "./headers";
 
 const JSON_CONTENT_TYPE = "application/json";
+const bodyLimits = new WeakMap<Request, number>();
+
+export class RequestBodyTooLargeError extends Error {}
+
+// Content-Length is only an early check: chunked or dishonest requests must
+// also be bounded while reading, before JSON/multipart parsing allocates memory.
+export async function readBoundedBody(request: Request) {
+  const limit = bodyLimits.get(request) ?? 1_000_000;
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        void reader.cancel().catch(() => undefined);
+        throw new RequestBodyTooLargeError();
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
 
 function hasAllowedOrigin(request: Request) {
   const origin = request.headers.get("origin");
@@ -37,6 +71,7 @@ export function requireSameOrigin(request: Request) {
 }
 
 export function requireJsonRequest(request: Request, maxBytes = 1_000_000) {
+  bodyLimits.set(request, maxBytes);
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
@@ -56,6 +91,7 @@ export function requireJsonRequest(request: Request, maxBytes = 1_000_000) {
 }
 
 export function requireMultipartRequest(request: Request, maxBytes: number) {
+  bodyLimits.set(request, maxBytes);
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 

@@ -1,13 +1,16 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { sendBrevoEmail } from "@/lib/email/brevo-smtp";
 import { recordEmailDeliveryAttempt } from "@/lib/email/delivery-attempts";
 import { createInsForgeServerClient } from "@/lib/insforge/server";
 import { getAppProfile } from "@/lib/insforge/session";
 import { isValidInventorySourceDate } from "@/lib/inventory/source-date";
+import { MAX_IMPORT_BODY_BYTES } from "@/lib/inventory/import-payload";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
 import { loadActiveOrderSkus } from "@/lib/orders/active-order-data";
 import { excludeActiveOrderRows } from "@/lib/orders/active-orders";
 import { requireJsonRequest } from "@/lib/security/request";
+import { consumeDistributedRateLimit } from "@/lib/security/distributed-rate-limit";
 import {
   isPlainObject,
   parseFiniteNumber,
@@ -19,6 +22,8 @@ import type {
   ReorderStatus,
   ReorderWatchItem,
 } from "@/types/inventory";
+
+export const maxDuration = 60;
 
 const escapeHtml = (value: string) => value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#039;" })[character] ?? character);
 
@@ -220,7 +225,7 @@ function normalizeInventoryItem(value: unknown, sourceExportedAt: string): Inven
 }
 
 export async function POST(request: Request) {
-  const requestError = requireJsonRequest(request, 5_500_000);
+  const requestError = requireJsonRequest(request, MAX_IMPORT_BODY_BYTES);
   if (requestError) return requestError;
   const profile = await getAppProfile();
   if (profile.role !== "admin" && profile.role !== "uploader") {
@@ -228,6 +233,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    const rate = await consumeDistributedRateLimit({
+      scope: "inventory-import", subject: profile.id, limit: 10, windowSeconds: 600,
+    });
+    if (!rate.allowed) {
+      return NextResponse.json({ message: "Demasiadas cargas. Intenta nuevamente en unos minutos." }, {
+        status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      });
+    }
     const parsed = await readJsonObject(request);
     if (parsed.error) return parsed.error;
     const filename = sanitizeText(parsed.data.filename, { maxLength: 255 });
@@ -270,24 +283,24 @@ export async function POST(request: Request) {
     );
     if (error) throw error;
 
-    const reorderResult = await processReorderNotifications(
-      insforge,
-      {
-        id: profile.id,
-        email: profile.email,
-        displayName: profile.displayName,
-      },
-      String(data),
-      filename,
-      cleanItems,
-    ).catch((caught) => ({
-      reorderCount: 0,
-      reorderWarning: errorMessage(
-        caught,
-        "No pudimos calcular las alertas de recompra.",
-      ),
-    }));
-    return NextResponse.json({ data, ...reorderResult });
+    revalidatePath("/(app)", "layout");
+    // The inventory transaction has committed. SMTP must not delay its response.
+    // after() keeps this work alive on supported serverless hosts (unlike void).
+    after(async () => {
+      try {
+        const result = await processReorderNotifications(
+          insforge,
+          { id: profile.id, email: profile.email, displayName: profile.displayName },
+          String(data), filename, cleanItems,
+        );
+        if (result.reorderWarning || result.emailLogWarning) {
+          console.error("inventory_notification_followup_failed", { snapshotId: String(data) });
+        }
+      } catch {
+        console.error("inventory_notification_followup_failed", { snapshotId: String(data) });
+      }
+    });
+    return NextResponse.json({ data, notificationsPending: true });
   } catch (caught) {
     return NextResponse.json(
       {

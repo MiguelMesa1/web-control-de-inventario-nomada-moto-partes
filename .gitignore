@@ -29,3 +29,9 @@ test-results/
 .env.local
 .env*.local
 .insforge/
+
+# Keep local instructions and audit reports off the public repository.
+*.md
+*.MD
+!/README.md
+/docs/
