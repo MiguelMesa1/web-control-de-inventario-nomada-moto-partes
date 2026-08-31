@@ -48,18 +48,18 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.4.0",
     "@types/nodemailer": "^8.0.1",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.4",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.5.4",
-    "eslint": "^9.39.0",
-    "eslint-config-next": "^16.2.12",
+    "eslint": "^10.9.1",
+    "eslint-config-next": "^16.3.3",
     "postcss": "^8.5.24",
-    "tailwindcss": "3.4.17",
-    "typescript": "6.0.0-beta",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
     "vitest": "^4.1.10"
   }
 }
