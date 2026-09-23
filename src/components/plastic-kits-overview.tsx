@@ -392,6 +392,7 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PlasticKitDefinition | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const deferredQuery = useDeferredValue(query);
 
   const kits = useMemo(
@@ -594,36 +595,23 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
     }
   }
 
-  function exportKits() {
-    const columns = ["Kit", "Modelo", "Color", "Farola", "Piezas", "Kits armables"];
-    const safeCell = (value: string | number) => {
-      const text = String(value);
-      const protectedText = /^[=+\-@]/.test(text) ? `'${text}` : text;
-      return `"${protectedText.replaceAll('"', '""')}"`;
-    };
-    const rows = kits.map((kit) => {
-      const headlightValue = kitIncludesHeadlight(kit);
-      return [
-        kit.name,
-        getPlasticKitModel(kit),
-        kit.color,
-        headlightValue === null ? "No aplica" : headlightValue ? "Con farola" : "Sin farola",
-        kit.parts.length,
-        kit.available,
-      ]
-        .map(safeCell)
-        .join(",");
-    });
-    const blob = new Blob(
-      [`﻿${columns.map(safeCell).join(",")}\r\n${rows.join("\r\n")}`],
-      { type: "text/csv;charset=utf-8" },
-    );
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `kits-plastico-nomada-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  async function exportKits() {
+    setExporting(true);
+    try {
+      const { downloadPlasticKitsExcel } = await import(
+        "@/lib/inventory/export-plastic-kits"
+      );
+      downloadPlasticKitsExcel(kits);
+      toast.success("Excel descargado", {
+        description: "La disponibilidad de kits se exportó en formato .xlsx.",
+      });
+    } catch (error) {
+      toast.error("No pudimos exportar el Excel", {
+        description: error instanceof Error ? error.message : "Intenta nuevamente.",
+      });
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -633,9 +621,17 @@ export function PlasticKitsOverview({ initialKits }: { initialKits: PlasticKitDe
         subtitle={`${kits.length} combinaciones modelo · color — ${armableToday} armables hoy`}
         actions={
           <>
-            <Button variant="outline" onClick={exportKits} disabled={kits.length === 0}>
-              <Download data-icon="inline-start" />
-              Exportar
+            <Button
+              variant="outline"
+              onClick={exportKits}
+              disabled={kits.length === 0 || exporting}
+            >
+              {exporting ? (
+                <LoaderCircle className="animate-spin" data-icon="inline-start" />
+              ) : (
+                <Download data-icon="inline-start" />
+              )}
+              {exporting ? "Generando Excel" : "Exportar Excel"}
             </Button>
             {isAdmin && (
               <Button onClick={openCreate}>
