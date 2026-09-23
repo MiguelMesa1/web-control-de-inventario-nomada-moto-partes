@@ -5,6 +5,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // Node tests run server modules; Next.js enforces this boundary in builds.
+      "server-only": "next/dist/compiled/server-only/empty.js",
     },
   },
   test: {
