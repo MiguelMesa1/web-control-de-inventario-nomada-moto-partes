@@ -8,6 +8,5 @@ insforge/
 .agents/
 AGENTS.md
 skills-lock.json
-pnpm-workspace.yaml
 *.docx
 *.pdf
