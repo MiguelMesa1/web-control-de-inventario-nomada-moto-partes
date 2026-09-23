@@ -1,8 +1,10 @@
 "use client";
 
-import { Download, Upload } from "lucide-react";
+import { Download, LoaderCircle, Upload } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 import { InventoryTable } from "@/components/inventory-table";
 import { PageHeader } from "@/components/page-header";
 import { useInventoryData } from "@/components/providers/inventory-provider";
@@ -17,6 +19,7 @@ const dateTime = new Intl.DateTimeFormat("es-CO", {
 });
 
 export function InventoryPageClient() {
+  const [exporting, setExporting] = useState(false);
   const data = useInventoryData();
   const profile = useProfile();
   const canUpload = profile.role === "admin" || profile.role === "uploader";
@@ -30,42 +33,23 @@ export function InventoryPageClient() {
     null,
   );
 
-  function exportInventory() {
-    const columns = [
-      "SKU",
-      "Producto",
-      "Línea",
-      "Existencia",
-      "Disponible",
-      "Fecha",
-    ];
-    const safeCell = (value: string | number) => {
-      const text = String(value);
-      const protectedText = /^[=+\-@]/.test(text) ? `'${text}` : text;
-      return `"${protectedText.replaceAll('"', '""')}"`;
-    };
-    const rows = data.current.map((item) =>
-      [
-        item.sku,
-        item.productName,
-        item.productLine,
-        item.stock,
-        item.available,
-        item.sourceExportedAt.slice(0, 10),
-      ]
-        .map(safeCell)
-        .join(","),
-    );
-    const blob = new Blob(
-      [`\uFEFF${columns.map(safeCell).join(",")}\r\n${rows.join("\r\n")}`],
-      { type: "text/csv;charset=utf-8" },
-    );
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `inventario-nomada-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  async function exportInventory() {
+    setExporting(true);
+    try {
+      const { downloadInventoryExcel } = await import(
+        "@/lib/inventory/export-inventory"
+      );
+      downloadInventoryExcel(data.current);
+      toast.success("Excel descargado", {
+        description: "El inventario se exportó en formato .xlsx.",
+      });
+    } catch (error) {
+      toast.error("No pudimos exportar el Excel", {
+        description: error instanceof Error ? error.message : "Intenta nuevamente.",
+      });
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -85,10 +69,14 @@ export function InventoryPageClient() {
             <Button
               variant="outline"
               onClick={exportInventory}
-              disabled={data.current.length === 0}
+              disabled={data.current.length === 0 || exporting}
             >
-              <Download data-icon="inline-start" />
-              Exportar
+              {exporting ? (
+                <LoaderCircle className="animate-spin" data-icon="inline-start" />
+              ) : (
+                <Download data-icon="inline-start" />
+              )}
+              {exporting ? "Generando Excel" : "Exportar Excel"}
             </Button>
             {canUpload && (
               <Button asChild>
