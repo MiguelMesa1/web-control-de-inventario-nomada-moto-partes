@@ -4,10 +4,9 @@ test-results/
 playwright-report/
 design-system/
 migrations/
-insforge/
+/insforge/
 .agents/
 AGENTS.md
 skills-lock.json
-pnpm-workspace.yaml
 *.docx
 *.pdf
