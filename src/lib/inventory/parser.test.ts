@@ -94,6 +94,41 @@ describe("inventory file normalization", () => {
     expect(rows[1].productLine).toBe("Sin marca");
   });
 
+  it("maps the Effi export with Stock disponible empresa", () => {
+    const rows = normalizeInventoryRows([
+      {
+        ID: 1,
+        Nombre: "FLETE",
+        Referencia: "",
+        Marca: "",
+        "Último costo": 0,
+        "Gestión de stock": "No",
+        "Stock disponible empresa": "-No aplica-",
+        "Stock posible combo": "-No aplica-",
+      },
+      {
+        ID: 2,
+        Nombre: "AMORTIGUADOR TRASERO",
+        Referencia: 5970000,
+        Marca: "Tvs",
+        "Último costo": 0,
+        "Gestión de stock": "No",
+        "Stock disponible empresa": 4,
+        "Stock posible combo": "-No aplica-",
+      },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sku: "5970000",
+      productName: "AMORTIGUADOR TRASERO",
+      productLine: "Tvs",
+      warehouse: "Empresa",
+      stock: 4,
+      available: 4,
+    });
+  });
+
   it("uses Principal warehouse stock for products whose company stock does not apply", () => {
     const rows = normalizeInventoryRows([
       {
