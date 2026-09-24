@@ -3,6 +3,11 @@ import type { InventoryItem } from "@/types/inventory";
 
 type RawRow = Record<string, unknown>;
 
+const companyStockAliases = [
+  "stock total empresa",
+  "stock disponible empresa",
+] as const;
+
 const headerAliases = {
   sku: [
     "sku",
@@ -26,7 +31,7 @@ const headerAliases = {
     "stock",
     "cantidad",
     "existencia fisica",
-    "stock total empresa",
+    ...companyStockAliases,
   ],
   principalStock: ["stock bodega: principal (sucursal: principal)"],
   reserved: ["reservado", "cantidad reservada", "comprometido"],
@@ -62,7 +67,7 @@ function isEffiConsolidatedExport(rows: RawRow[]) {
     headers.has("referencia") &&
     headers.has("nombre") &&
     headers.has("marca") &&
-    headers.has("stock total empresa")
+    companyStockAliases.some((header) => headers.has(header))
   );
 }
 
