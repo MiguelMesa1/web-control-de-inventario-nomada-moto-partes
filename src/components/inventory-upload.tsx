@@ -106,6 +106,7 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [error, setError] = useState("");
+  const [errorKind, setErrorKind] = useState<"validation" | "duplicate">("validation");
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -152,6 +153,7 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
     setSelectedFileName(file.name);
     setBusy(true);
     setError("");
+    setErrorKind("validation");
     setPreview(null);
     setProgress(30);
     try {
@@ -194,7 +196,17 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
         });
         const payload = (await response.json()) as {
           message?: string;
+          code?: string;
         };
+        if (response.status === 409 && payload.code === "already_published") {
+          setShowUploadProgress(false);
+          setProgress(0);
+          setErrorKind("duplicate");
+          setError(payload.message ?? "Este archivo ya se publicó.");
+          setPreview(null);
+          if (inputRef.current) inputRef.current.value = "";
+          return;
+        }
         if (!response.ok) throw new Error(payload.message ?? "Carga rechazada.");
       }
       setProgress(100);
@@ -346,6 +358,8 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
                     setSourceDate(event.target.value);
                     setPreview(null);
                     setSelectedFileName("");
+                    setError("");
+                    setErrorKind("validation");
                     if (inputRef.current) inputRef.current.value = "";
                   }}
                 />
@@ -357,7 +371,9 @@ export function InventoryUpload({ isDemo }: { isDemo: boolean }) {
             {error && (
               <Alert variant="destructive">
                 <XCircle />
-                <AlertTitle>Revisa las columnas del archivo</AlertTitle>
+                <AlertTitle>
+                  {errorKind === "duplicate" ? "Archivo ya publicado" : "Revisa el archivo"}
+                </AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}

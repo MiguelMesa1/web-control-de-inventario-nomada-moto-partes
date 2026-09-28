@@ -281,6 +281,29 @@ export async function POST(request: Request) {
         exported_at: sourceExportedAt,
       },
     );
+    if (error?.message === "This inventory file has already been published") {
+      const original = await insforge.database
+        .from("inventory_snapshots")
+        .select("filename,source_exported_at")
+        .eq("checksum", checksum)
+        .limit(1);
+      const snapshot = original.error ? null : original.data?.[0];
+      const publishedDate = snapshot
+        ? new Intl.DateTimeFormat("es-CO", {
+            dateStyle: "long",
+            timeZone: "America/Bogota",
+          }).format(new Date(String(snapshot.source_exported_at)))
+        : null;
+      return NextResponse.json(
+        {
+          code: "already_published",
+          message: snapshot
+            ? `Este archivo ya se publicó como “${String(snapshot.filename)}” con fecha de inventario ${publishedDate}. Selecciona una exportación nueva para actualizar las existencias.`
+            : "Este archivo ya se publicó. Selecciona una exportación nueva para actualizar las existencias.",
+        },
+        { status: 409 },
+      );
+    }
     if (error) throw error;
 
     revalidatePath("/(app)", "layout");
