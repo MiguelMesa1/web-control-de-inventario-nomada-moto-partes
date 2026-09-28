@@ -100,6 +100,39 @@ describe("POST /api/inventory/import", () => {
     expect(after).not.toHaveBeenCalled();
   });
 
+  it("explica cuándo se publicó un archivo duplicado sin iniciar otra publicación", async () => {
+    const original = {
+      filename: "inventario-viernes.xlsx",
+      source_exported_at: "2026-09-25T05:00:00.000Z",
+    };
+    const limit = vi.fn().mockResolvedValue({ data: [original], error: null });
+    const eq = vi.fn().mockReturnValue({ limit });
+    const select = vi.fn().mockReturnValue({ eq });
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "This inventory file has already been published" },
+    });
+    createInsForgeServerClient.mockResolvedValue({
+      database: { rpc, from: vi.fn().mockReturnValue({ select }) },
+    });
+
+    const response = await POST(new Request("https://inventario.example/api/inventory/import", {
+      method: "POST",
+      headers: { origin: "https://inventario.example", "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      code: "already_published",
+      message: "Este archivo ya se publicó como “inventario-viernes.xlsx” con fecha de inventario 25 de septiembre de 2026. Selecciona una exportación nueva para actualizar las existencias.",
+    });
+    expect(eq).toHaveBeenCalledWith("checksum", requestBody.checksum);
+    expect(rpc).toHaveBeenCalledOnce();
+    expect(after).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
   it("mantiene la publicación exitosa si falla el cálculo de recompra", async () => {
     createInsForgeServerClient.mockResolvedValue({
       database: {
