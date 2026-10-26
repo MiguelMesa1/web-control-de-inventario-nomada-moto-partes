@@ -11,6 +11,7 @@ const item: InventoryItem = {
   stock: 15,
   reserved: 3,
   available: 12,
+  unitCost: 5000,
   sourceExportedAt: "2026-09-22T18:30:00.000Z",
 };
 
@@ -31,10 +32,22 @@ describe("createInventoryExcel", () => {
         Producto: "Guardabarros delantero",
         "Línea": "Plásticos",
         Existencia: 15,
+        "Costo unitario": 5000,
+        "Costo total": 75000,
         Disponible: 12,
         Fecha: "2026-09-22",
       },
     ]);
-    expect(worksheet["!autofilter"]?.ref).toBe("A1:F2");
+    expect(worksheet["!autofilter"]?.ref).toBe("A1:H2");
+    expect(worksheet.E2.t).toBe("n");
+    expect(worksheet.F2.t).toBe("n");
+  });
+
+  it("deja los costos vacíos cuando el inventario anterior no los tiene", async () => {
+    const download = createInventoryExcel([{ ...item, unitCost: null }]);
+    const workbook = XLSX.read(await download.blob.arrayBuffer(), { type: "array" });
+    const row = XLSX.utils.sheet_to_json<Record<string, string | number>>(workbook.Sheets.Inventario)[0];
+    expect(row).not.toHaveProperty("Costo unitario");
+    expect(row).not.toHaveProperty("Costo total");
   });
 });

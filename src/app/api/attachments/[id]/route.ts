@@ -14,7 +14,7 @@ type AttachmentRow = {
   uploaded_by: string;
 };
 
-export function canDeleteAttachment(
+function canDeleteAttachment(
   actor: Pick<Awaited<ReturnType<typeof getAppProfile>>, "id" | "role">,
   attachment: Pick<AttachmentRow, "uploaded_by">,
 ) {

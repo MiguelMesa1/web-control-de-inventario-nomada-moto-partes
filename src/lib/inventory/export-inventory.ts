@@ -12,11 +12,13 @@ export function createInventoryWorkbook(items: InventoryItem[]) {
     Producto: item.productName,
     "Línea": item.productLine,
     Existencia: item.stock,
+    "Costo unitario": item.unitCost ?? null,
+    "Costo total": item.unitCost == null ? null : Math.round(item.stock * item.unitCost * 100) / 100,
     Disponible: item.available,
     Fecha: item.sourceExportedAt.slice(0, 10),
   }));
   const worksheet = XLSX.utils.json_to_sheet(rows, {
-    header: ["SKU", "Producto", "Línea", "Existencia", "Disponible", "Fecha"],
+    header: ["SKU", "Producto", "Línea", "Existencia", "Costo unitario", "Costo total", "Disponible", "Fecha"],
   });
 
   worksheet["!cols"] = [
@@ -24,6 +26,8 @@ export function createInventoryWorkbook(items: InventoryItem[]) {
     { wch: 48 },
     { wch: 24 },
     { wch: 14 },
+    { wch: 18 },
+    { wch: 18 },
     { wch: 14 },
     { wch: 13 },
   ];
@@ -32,8 +36,12 @@ export function createInventoryWorkbook(items: InventoryItem[]) {
   }
   for (let row = 2; row <= rows.length + 1; row += 1) {
     const stockCell = worksheet[`D${row}`];
-    const availableCell = worksheet[`E${row}`];
+    const unitCostCell = worksheet[`E${row}`];
+    const totalCostCell = worksheet[`F${row}`];
+    const availableCell = worksheet[`G${row}`];
     if (stockCell) stockCell.z = "#,##0.00";
+    if (unitCostCell) unitCostCell.z = "#,##0.00";
+    if (totalCostCell) totalCostCell.z = "#,##0.00";
     if (availableCell) availableCell.z = "#,##0.00";
   }
 

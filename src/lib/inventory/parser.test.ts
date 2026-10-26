@@ -9,6 +9,7 @@ describe("inventory file normalization", () => {
     expect(body.sourceExportedAt).toBe("2026-08-01T05:00:00Z");
     expect(body.items[0]).not.toHaveProperty("sourceExportedAt");
     expect(body.items[0].available).toBe(1);
+    expect(body.items[0].unitCost).toBeNull();
   });
 
   it("rejects an oversized serialized import before sending any request", () => {
@@ -199,6 +200,7 @@ describe("inventory file normalization", () => {
       warehouse: "Principal",
       stock: 3,
       available: 3,
+      unitCost: 0,
     });
     expect(rows[1]).toMatchObject({
       sku: "001-XTZ125",
@@ -206,6 +208,7 @@ describe("inventory file normalization", () => {
       warehouse: "Principal",
       stock: 8,
       available: 8,
+      unitCost: 5000,
     });
   });
 
@@ -222,6 +225,10 @@ describe("inventory file normalization", () => {
         },
       ]),
     ).toThrow(/número válido/i);
+    expect(() => normalizeInventoryRows([{
+      SKU: "A-1", Producto: "Producto", Línea: "Motor", Bodega: "Principal",
+      Existencia: 1, "Último costo": -10,
+    }])).toThrow(/costo unitario.*negativo/i);
   });
 
   it("rejects empty files", () => {
