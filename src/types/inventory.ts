@@ -18,6 +18,7 @@ export interface InventoryItem {
   stock: number;
   reserved: number;
   available: number;
+  unitCost?: number | null;
   snapshotId?: string;
   sourceExportedAt: string;
 }

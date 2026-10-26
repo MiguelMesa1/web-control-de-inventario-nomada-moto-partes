@@ -36,6 +36,7 @@ const headerAliases = {
   principalStock: ["stock bodega: principal (sucursal: principal)"],
   reserved: ["reservado", "cantidad reservada", "comprometido"],
   available: ["disponible", "cantidad disponible", "saldo disponible"],
+  unitCost: ["ultimo costo", "costo unitario", "costo", "coste unitario"],
 } as const;
 
 const normalizeHeader = (value: string) =>
@@ -187,6 +188,13 @@ export function normalizeInventoryRows(
       availableRaw === undefined
         ? stock - reserved
         : numericValue(availableRaw, "disponible", rowNumber);
+    const unitCostRaw = findValue(row, headerAliases.unitCost);
+    const unitCost = unitCostRaw === undefined
+      ? null
+      : numericValue(unitCostRaw, "costo unitario", rowNumber);
+    if (unitCost !== null && unitCost < 0) {
+      throw new Error(`Fila ${rowNumber}: “costo unitario” no puede ser negativo.`);
+    }
 
     return {
       sku,
@@ -196,6 +204,7 @@ export function normalizeInventoryRows(
       stock,
       reserved,
       available,
+      unitCost,
       sourceExportedAt,
     };
   });

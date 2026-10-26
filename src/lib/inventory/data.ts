@@ -35,6 +35,7 @@ type DbInventoryItem = {
   stock: number | string;
   reserved: number | string;
   available: number | string;
+  unit_cost: number | string | null;
   snapshot_id: string;
   source_exported_at: string;
 };
@@ -67,6 +68,7 @@ const mapInventoryItem = (item: DbInventoryItem): InventoryItem => ({
   stock: Number(item.stock),
   reserved: Number(item.reserved),
   available: Number(item.available),
+  unitCost: item.unit_cost == null ? null : Number(item.unit_cost),
   snapshotId: item.snapshot_id,
   sourceExportedAt: item.source_exported_at,
 });
@@ -102,7 +104,7 @@ async function loadCurrent(insforge: InsForgeServerClient) {
     insforge.database
       .from("inventory_current")
       .select(
-        "sku,product_name,product_line,warehouse,stock,reserved,available,snapshot_id,source_exported_at",
+        "sku,product_name,product_line,warehouse,stock,reserved,available,unit_cost,snapshot_id,source_exported_at",
       )
       .order("product_line")
       .order("product_name")

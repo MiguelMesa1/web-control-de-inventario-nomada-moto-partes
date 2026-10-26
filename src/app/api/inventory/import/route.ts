@@ -7,6 +7,7 @@ import { getAppProfile } from "@/lib/insforge/session";
 import { isValidInventorySourceDate } from "@/lib/inventory/source-date";
 import { MAX_IMPORT_BODY_BYTES } from "@/lib/inventory/import-payload";
 import { buildReorderAlertRows } from "@/lib/inventory/reorder";
+import { reorderEmailStatusLabel } from "@/lib/inventory/reorder-email-label";
 import { loadActiveOrderSkus } from "@/lib/orders/active-order-data";
 import { excludeActiveOrderRows } from "@/lib/orders/active-orders";
 import { requireJsonRequest } from "@/lib/security/request";
@@ -19,20 +20,12 @@ import {
 } from "@/lib/security/input";
 import type {
   InventoryItem,
-  ReorderStatus,
   ReorderWatchItem,
 } from "@/types/inventory";
 
 export const maxDuration = 60;
 
 const escapeHtml = (value: string) => value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#039;" })[character] ?? character);
-
-export function reorderEmailStatusLabel(status: ReorderStatus) {
-  if (status === "missing") return "Sin registro";
-  if (status === "exhausted") return "Agotado";
-  if (status === "low") return "Por reponer";
-  return "Nivel estable";
-}
 
 function reorderEmailHtml(
   rows: ReturnType<typeof buildReorderAlertRows>,
@@ -220,8 +213,12 @@ function normalizeInventoryItem(value: unknown, sourceExportedAt: string): Inven
   const stock = parseFiniteNumber(value.stock, { min: -999_999_999, max: 999_999_999 });
   const reserved = parseFiniteNumber(value.reserved, { min: -999_999_999, max: 999_999_999 });
   const available = parseFiniteNumber(value.available, { min: -999_999_999, max: 999_999_999 });
-  if (!sku || !productName || !productLine || !warehouse || stock === null || reserved === null || available === null) return null;
-  return { sku, productName, productLine, warehouse, stock, reserved, available, sourceExportedAt };
+  const rawUnitCost = value.unitCost;
+  const unitCost = rawUnitCost === undefined || rawUnitCost === null
+    ? null
+    : parseFiniteNumber(rawUnitCost, { min: 0, max: 999_999_999_999.99 });
+  if (!sku || !productName || !productLine || !warehouse || stock === null || reserved === null || available === null || (rawUnitCost != null && unitCost === null)) return null;
+  return { sku, productName, productLine, warehouse, stock, reserved, available, unitCost, sourceExportedAt };
 }
 
 export async function POST(request: Request) {
@@ -271,6 +268,7 @@ export async function POST(request: Request) {
       stock: item.stock,
       reserved: item.reserved,
       available: item.available,
+      unit_cost: item.unitCost ?? null,
     }));
     const { data, error } = await insforge.database.rpc(
       "publish_inventory_snapshot",

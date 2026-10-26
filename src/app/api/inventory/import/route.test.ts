@@ -34,7 +34,8 @@ vi.mock("@/lib/insforge/server", () => ({ createInsForgeServerClient }));
 vi.mock("@/lib/insforge/session", () => ({ getAppProfile }));
 vi.mock("@/lib/orders/active-order-data", () => ({ loadActiveOrderSkus }));
 
-import { POST, reorderEmailStatusLabel } from "./route";
+import { POST } from "./route";
+import { reorderEmailStatusLabel } from "@/lib/inventory/reorder-email-label";
 
 const requestBody = {
   filename: "inventario.xlsx",
@@ -49,6 +50,7 @@ const requestBody = {
       stock: 5,
       reserved: 0,
       available: 5,
+      unitCost: 5000,
       sourceExportedAt: "2026-07-30T05:00:00.000Z",
     },
   ],
@@ -134,9 +136,10 @@ describe("POST /api/inventory/import", () => {
   });
 
   it("mantiene la publicación exitosa si falla el cálculo de recompra", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: "snapshot-1", error: null });
     createInsForgeServerClient.mockResolvedValue({
       database: {
-        rpc: vi.fn().mockResolvedValue({ data: "snapshot-1", error: null }),
+        rpc,
         from: vi.fn((table: string) => {
           if (table === "reorder_watchlist") {
             return {
@@ -171,6 +174,9 @@ describe("POST /api/inventory/import", () => {
     await after.mock.calls[0][0]();
 
     expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith("publish_inventory_snapshot", expect.objectContaining({
+      items: [expect.objectContaining({ sku: "SKU-1", unit_cost: 5000 })],
+    }));
     expect(payload).toMatchObject({
       data: "snapshot-1",
       notificationsPending: true,

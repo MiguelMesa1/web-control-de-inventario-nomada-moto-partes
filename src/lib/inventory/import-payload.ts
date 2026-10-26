@@ -7,7 +7,7 @@ export function serializeInventoryImport(filename: string, checksum: string, sou
   const body = JSON.stringify({ filename, checksum, sourceExportedAt,
     items: items.map((item) => ({ sku: item.sku, productName: item.productName,
       productLine: item.productLine, warehouse: item.warehouse, stock: item.stock,
-      reserved: item.reserved, available: item.available })),
+      reserved: item.reserved, available: item.available, unitCost: item.unitCost ?? null })),
   });
   if (new TextEncoder().encode(body).byteLength > MAX_IMPORT_BODY_BYTES) {
     throw new Error("Los datos del inventario superan el límite de publicación de 4,4 MB. No se publicó ninguna fila.");
